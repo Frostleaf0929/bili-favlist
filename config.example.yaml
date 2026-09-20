@@ -1,0 +1,30 @@
+# 复制为 config.yaml 后填写。config.yaml 已被 .gitignore 忽略，不会被提交。
+cookie:
+  # 获取方式见 README：可让 ZCode 操作本机 Edge 自动提取，也可手动从 DevTools 复制
+  sessdata: "把SESSDATA粘贴到这里"
+  bili_jct: "把bili_jct粘贴到这里"
+  dede_user_id: "把DedeUserID粘贴到这里"   # 纯数字
+
+settings:
+  user_agent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36 Edg/126.0.0.0"
+  ps: 20                # 收藏夹列表每页条数（接口上限 20）
+  read_rate_min: 0.8    # 读接口翻页最小间隔（秒）
+  read_rate_max: 1.6
+  write_rate_min: 0.5   # 写接口每批最小间隔（秒）
+  write_rate_max: 2.0
+  batch_size: 10        # 每次批量移动的条数（建议 10-20）
+
+export:
+  # 要导出的收藏夹 media_id 列表；留空则用命令行 --media-id / --all 指定
+  media_ids: []
+
+writeback:
+  # 自动新建分类收藏夹的隐私设置：1=私密 0=公开
+  new_folder_privacy: 1
+  # 单个收藏夹容量上限（B站限制 1000）
+  folder_max_items: 1000
+  # 分类名 -> 已有收藏夹 media_id 的映射，优先使用；
+  # 未配置的分类：若存在同名收藏夹则复用，否则自动新建
+  category_to_folder: {}
+  #   编程开发: 32748291
+  #   生活记录: 32748123

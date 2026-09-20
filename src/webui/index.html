@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>B站收藏夹分类工作台</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<aside id="side">
+  <div class="logo">📦 收藏夹<br>分类工作台</div>
+  <nav id="tabs">
+    <button data-tab="dash" class="on">🚀 流水线</button>
+    <button data-tab="review">🧐 待审复核</button>
+    <button data-tab="items">🎞️ 全部条目</button>
+    <button data-tab="tax">🗂️ 分类体系</button>
+    <button data-tab="rules">📏 规则</button>
+    <button data-tab="eval">🧪 手动分类对比</button>
+    <button data-tab="fun">📊 趣味数据</button>
+    <button data-tab="wb">⬆️ 写回与设置</button>
+  </nav>
+  <div class="side-foot" id="side-foot"></div>
+</aside>
+
+<main>
+  <!-- 流水线 -->
+  <section id="tab-dash">
+    <div class="page-head"><h2>流水线</h2><p>规则初筛 → AI 细化 → 共现强化 → 复查。建议连跑两遍以上。</p></div>
+    <div class="cards" id="stat-cards"></div>
+    <div class="row">
+      <button class="primary" id="btn-run1">▶ 跑一遍流水线</button>
+      <button class="primary" id="btn-run2">▶▶ 连跑两遍（复查）</button>
+      <button id="btn-ai-emit">导出AI队列</button>
+      <button id="btn-ai-import">导入AI结果</button>
+      <button id="btn-ai-llm">AI在线分类</button>
+    </div>
+    <div class="panel">
+      <h3>遍次报告</h3>
+      <div id="pass-list"><em>还没有跑过。第一次导入数据后点「跑一遍流水线」。</em></div>
+    </div>
+    <div class="panel">
+      <h3>分类分布</h3>
+      <div id="cat-dist"></div>
+    </div>
+    <div class="panel">
+      <h3>关键词 ↔ 分类 共现TOP（P≥60% 且 n≥5 的可被强化）</h3>
+      <table id="stats-table"><thead><tr><th>关键词</th><th>最强分类</th><th>概率P</th><th>样本n</th><th>状态</th></tr></thead><tbody></tbody></table>
+    </div>
+  </section>
+
+  <!-- 待审复核 -->
+  <section id="tab-review" class="hide">
+    <div class="page-head"><h2>待审复核</h2><p>规则改判 / 低置信 / AI待确认的条目。确认一条少一条。</p></div>
+    <div class="row">
+      <label>排序 <select id="rev-sort"><option value="margin">不确定度优先（最拿不准的先看）</option><option value="score">分数升序</option><option value="fav_time">收藏时间</option></select></label>
+      <button onclick="loadReview()">刷新</button>
+      <span class="hint">建议每天 ≤50 条：只看排最前面的，边际收益递减。</span>
+    </div>
+    <div id="review-list"></div>
+    <div class="row"><button id="rev-more">加载更多</button></div>
+  </section>
+
+  <!-- 全部条目 -->
+  <section id="tab-items" class="hide">
+    <div class="page-head"><h2>全部条目</h2></div>
+    <div class="row">
+      <select id="f-status"><option value="">全部状态</option><option value="auto">规则命中</option><option value="ai">AI</option><option value="human">人工</option><option value="review">待复核</option><option value="low">未分类</option><option value="none">明确不要</option></select>
+      <select id="f-cat"><option value="">全部分类</option></select>
+      <input id="f-q" placeholder="搜索标题/UP/标签">
+      <button onclick="loadItems(1)">查询</button>
+      <span id="items-total" class="muted"></span>
+    </div>
+    <div class="row bulk-bar">
+      勾选后批量设为：<select id="bulk-cat"></select>
+      <button onclick="bulkLabel()">应用</button>
+      <span class="hint">（本页全选 <input type="checkbox" id="sel-all"> ）</span>
+    </div>
+    <table class="items-table" id="items-table">
+      <thead><tr><th></th><th>收藏时间</th><th>标题</th><th>UP主</th><th>信号</th><th>状态</th><th>分类(可改)</th></tr></thead>
+      <tbody></tbody>
+    </table>
+    <div class="row"><button id="items-more">下一页</button></div>
+  </section>
+
+  <!-- 分类体系 -->
+  <section id="tab-tax" class="hide">
+    <div class="page-head"><h2>分类体系</h2><p>初始分类可合并进大分类夹；写回目标 = 初始分类自己的夹（若有），否则大分类夹的夹。</p></div>
+    <div class="row">
+      <input id="new-group" placeholder="新大分类夹名称"><button onclick="addGroup()">建大分类夹</button>
+    </div>
+    <div id="tax-tree"></div>
+    <div class="panel">
+      <h3>未归组的初始分类</h3>
+      <div id="tax-loose"></div>
+    </div>
+  </section>
+
+  <!-- 规则 -->
+  <section id="tab-rules" class="hide">
+    <div class="page-head"><h2>规则</h2><p>四个规则块独立管理；强化规则由共现概率自动产生。</p></div>
+    <div class="panel">
+      <h3>新增规则</h3>
+      <div class="row">
+        块 <select id="r-block"><option value="initial">初筛</option><option value="manual">手写</option></select>
+        字段 <select id="r-field"><option value="title">标题</option><option value="tag">标签</option><option value="up">UP主</option><option value="desc">简介</option></select>
+        分类 <select id="r-cat"></select>
+        权重 <input id="r-weight" value="1.0" size="3">
+        <label><input type="checkbox" id="r-strong"> 强规则（单信号也命中）</label>
+      </div>
+      <div class="row">
+        关键词（逗号分隔）<input id="r-kw" size="46" placeholder="如: 切片, 熟肉, 【熟】">
+        或正则 <input id="r-regex" size="22">
+        <button class="primary" onclick="addRule()">添加</button>
+      </div>
+    </div>
+    <div id="rules-blocks"></div>
+  </section>
+
+  <!-- 手动分类对比 -->
+  <section id="tab-eval" class="hide">
+    <div class="page-head"><h2>手动分类对比</h2><p>用你手动整理过的其余收藏夹当「标准答案」：拉取 → 引擎预测 → 对比一致率，检验这套思路链靠不靠谱。</p></div>
+    <div class="row">
+      排除主夹 <input id="eval-exclude" value="" size="22" placeholder="留空=自动排除已导入的夹" title="逗号分隔 media_id；留空则自动排除正在分类的那批收藏夹">
+      <button class="primary" onclick="evalFetch()">① 从B站拉取其余收藏夹</button>
+      <button class="primary" onclick="evalRun()">② 运行对比评估</button>
+      <span id="eval-progress" class="muted"></span>
+    </div>
+    <div id="eval-report"></div>
+    <div class="panel">
+      <h3>① 补拉标签（并发，约 2-3 条/秒）</h3>
+      <div class="row">
+        模式 <select id="tags-mode"><option value="random">随机抽样</option><option value="sequential">按收藏顺序</option></select>
+        数量 <input id="tags-cap" value="1000" size="6"> 条
+        并发 <input id="tags-workers" value="2" size="3"> 线程（1-4）
+        <button class="primary" onclick="fetchTags()">开始补拉</button>
+        <span id="tags-progress" class="muted"></span>
+      </div>
+      <p class="hint">首次建议随机 1000 条做数据核查；tags 参与热词学习与打分。</p>
+    </div>
+    <div class="panel">
+      <h3>② 选择学习语料（勾选手动整理过的收藏夹）</h3>
+      <div class="row">
+        <button onclick="corpusSelectN(5)">勾选 ≥5 条的夹</button>
+        <button onclick="corpusSelectAll(false)">全不选</button>
+        <button class="primary" onclick="corpusSave()">保存勾选</button>
+        <span id="corpus-status" class="muted"></span>
+      </div>
+      <div id="corpus-list" style="max-height:260px;overflow:auto;border:1px solid var(--line);border-radius:8px;padding:6px"></div>
+    </div>
+    <div class="panel">
+      <h3>③ 学习热词 + 权重回验</h3>
+      <div class="row">
+        <button class="primary" onclick="learnHotwords()">学习热词表</button>
+        <button class="primary" onclick="learnHotwords2()">池2个人化小学习</button>
+        <button class="primary" onclick="learnWeights()">学权重+切分回验（80/20）</button>
+        <a href="/api/rules/export.md"><button>导出规则包 md</button></a>
+        <a href="/api/rules/export.yaml"><button>导出规则包 yaml</button></a>
+        <button onclick="importRules()">回导 data/rules_export.md</button>
+        <span id="learn-status" class="muted"></span>
+      </div>
+      <div id="learn-report"></div>
+    </div>
+  </section>
+
+  <!-- 趣味数据 -->
+  <section id="tab-fun" class="hide">
+    <div class="page-head"><h2>趣味数据</h2><p>你的收藏画像：热词、UP主、时间分布与分类排行。</p></div>
+    <div class="cards" id="fun-cards"></div>
+    <div class="panel"><h3>🔥 Top50 标签（占你打标收藏的比例）</h3><div id="fun-tags"></div></div>
+    <div class="panel"><h3>📺 关注最多的 UP 主 TOP30</h3><div id="fun-ups"></div></div>
+    <div class="panel"><h3>🗓️ 每月收藏量</h3><div id="fun-monthly"></div></div>
+    <div class="panel"><h3>🏆 分类数量排行</h3><div id="fun-cats"></div></div>
+  </section>
+
+  <!-- 写回 & 设置 -->
+  <section id="tab-wb" class="hide">
+    <div class="page-head"><h2>写回与设置</h2><p>只移动、不删除；先预览，输入 APPLY 才执行。</p></div>
+
+    <div class="panel">
+      <h3>🛡 保护名单（写回安全闸门）</h3>
+      <p class="hint">
+        三级保护：<b>锁定</b>＝既不能作移动目标、也不能作移动源（池2 情绪化/个人化夹自动锁定）；
+        <b>软保护</b>＝可以动，但执行时必须额外输入确认串；<b>自由</b>＝正常参与。
+      </p>
+      <div class="row">
+        <span id="guard-counts" class="hint">加载中…</span>
+        <button onclick="loadGuard()">刷新</button>
+      </div>
+      <div class="row">
+        只看 <select id="guard-filter" onchange="renderGuard()">
+          <option value="">全部</option>
+          <option value="locked">锁定</option>
+          <option value="soft">软保护</option>
+          <option value="free">自由</option>
+        </select>
+        搜索 <input id="guard-q" size="14" oninput="renderGuard()" placeholder="夹名关键词">
+        <span class="hint">改动即时保存</span>
+      </div>
+      <div id="guard-list"></div>
+    </div>
+
+    <div class="panel">
+      <h3>🚦 移动范围与限额</h3>
+      <div class="row">
+        模式
+        <select id="scope-mode" onchange="onScopeModeChange()">
+          <option value="minimal">最小授权（只有白名单夹能作为「移动源」）— 推荐</option>
+          <option value="all_unlocked">全部未锁定（除锁定夹外都可作为移动源）</option>
+        </select>
+        <button onclick="saveScope()">保存移动范围</button>
+      </div>
+      <div id="scope-allow-box"></div>
+      <div class="row">
+        单次上限 <input id="lim-run" size="5"> 条
+        当日上限 <input id="lim-day" size="6"> 条
+        <button onclick="saveLimits()">保存限额</button>
+      </div>
+      <p class="hint" id="lim-headroom"></p>
+    </div>
+
+    <div class="panel">
+      <h3>写回到B站</h3>
+      <div class="row">
+        <label>包含状态 <select id="wb-status" multiple size="5"><option value="auto" selected>规则命中</option><option value="hot" selected>热词命中</option><option value="hot2" selected>个人化</option><option value="ai" selected>AI</option><option value="human" selected>人工</option><option value="review" selected>待复核</option></select></label>
+        <span class="hint">池2命中的会进「个人化」新夹；锁定夹绝不作为目标/移动源。</span>
+        <button onclick="wbPlan()">生成计划（预览）</button>
+      </div>
+      <div id="wb-summary"></div>
+      <div class="row">
+        <input id="wb-confirm" placeholder="输入 APPLY 确认执行" size="20">
+        <input id="wb-confirm-soft" placeholder="涉及软保护时再输 CONFIRM-SOFT" size="30">
+        <button class="danger" onclick="wbApply()">执行移动</button>
+      </div>
+      <div id="wb-result"></div>
+    </div>
+    <div class="panel">
+      <h3>判定阈值</h3>
+      <div class="row">
+        最低分 <input id="s-min-score" size="4"> 分差 <input id="s-min-margin" size="4">
+        最少证据数 <input id="s-min-fields" size="3">（单关键词不自动命中）
+      </div>
+      <div class="row">
+        强化概率P≥ <input id="s-reinforce-p" size="4"> 强化样本n≥ <input id="s-reinforce-min-n" size="3">
+        每遍强化上限 <input id="s-promote-cap" size="4">
+        <button onclick="saveSettings()">保存设置</button>
+      </div>
+    </div>
+    <div class="panel">
+      <h3>LLM 在线分类（OpenAI 兼容，仅 https）</h3>
+      <div class="row">
+        地址 <input id="llm-url" size="32" placeholder="https://api.example.com/v1">
+        模型 <input id="llm-model" size="14">
+        Key <input id="llm-key" size="18" type="password">
+        <button onclick="saveLLM()">保存</button>
+        <button onclick="runLLM()">跑AI批量(最新300条)</button>
+      </div>
+      <p class="hint">没有云端接口？用「导出AI队列」→ 交给会话/其他工具分析 → 「导入AI结果」。</p>
+    </div>
+  </section>
+</main>
+<div id="toast"></div>
+<script src="/app.js"></script>
+</body>
+</html>

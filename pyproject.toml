@@ -1,0 +1,38 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "bili-favlist"
+version = "0.1.0"
+description = "B站收藏夹批量分类工具：导出 → 规则+AI 分类 → 两级归类 → 批量写回，含本地交互式工作台"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "bili-favlist contributors" }]
+keywords = ["bilibili", "favorites", "classifier", "gui", "tool"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Topic :: Utilities",
+]
+dependencies = [
+    "requests>=2.31",
+    "PyYAML>=6.0",
+    "openpyxl>=3.1",
+]
+
+[project.optional-dependencies]
+package = ["pyinstaller>=6.0"]
+dev = ["pyinstaller>=6.0"]
+
+[project.scripts]
+bili-favlist = "src.main:main"
+
+[tool.setuptools]
+packages = ["src"]
+include-package-data = true
+
+[tool.setuptools.package-data]
+src = ["webui/*.html", "webui/*.js", "webui/*.css", "sample_data/*.json"]

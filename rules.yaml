@@ -1,0 +1,95 @@
+# ============================================================
+# 分类规则（示例，可按自己的收藏夹内容改写）
+# - 权重：up=2.0 > title=1.0 > tag=0.6；每命中一个关键词加一次权重
+# - 最高分 >= 1.0 且领先第二名 >= 0.5 才算规则命中，否则进 AI 兜底
+# - 目标收藏夹映射见 config.yaml writeback.category_to_folder（建议复用已有夹）
+# ============================================================
+
+categories:
+  vtb切片:
+    description: 虚拟主播切片/熟肉/剪辑（hololive、Neuro、字幕组等）
+  歌曲MV:
+    description: 歌曲、翻唱、MV/PV、原创曲、歌词版
+  MAD剪辑:
+    description: MAD/AMV/误解向/混剪/剪辑作品
+  MMD舞蹈:
+    description: MMD、舞蹈、描改动画（跳/舞类）
+  手书动画:
+    description: 手书、同人动画、小剧场
+  绘画:
+    description: 绘画作品/过程/作画相关
+  cos:
+    description: cos正片、妆造、c服相关
+  asmr音声:
+    description: asmr、音声、助眠向
+  学习教程:
+    description: 软件/技能教程、干货、知识科普（PS/AE/Live2D/语言等）
+  vlog日常:
+    description: vlog、旅行、探店、日常记录
+  游戏明日方舟:
+    description: 明日方舟相关
+  游戏原神:
+    description: 原神相关
+  游戏星穹铁道:
+    description: 崩坏：星穹铁道相关
+  游戏崩坏:
+    description: 崩坏3/崩坏系列相关
+  游戏蔚蓝档案:
+    description: ブルアガ/蔚蓝档案相关
+  东方Project:
+    description: 东方Project/幻想乡相关
+  洛天依:
+    description: 洛天依/Vsinger相关
+  声优:
+    description: 声优/配音演员相关（访谈、梗、活动）
+
+weights:
+  up: 2.0
+  title: 1.0
+  tag: 0.6
+
+thresholds:
+  min_score: 1.0
+  min_margin: 0.5
+
+up_rules:
+  - {match: "No_10字幕组", category: vtb切片}
+  - {match: "PMR字幕组", category: vtb切片}
+  - {match: "秋名山巡洋舰", category: vlog日常}
+  - {match: "斑马星人", category: 学习教程}
+  - {match: "大庞设计工作室", category: 学习教程}
+  - {match: "Live2D官方账号", category: 学习教程}
+
+title_rules:
+  # vtb 切片/熟肉
+  - {keywords: [切片, 熟肉, 【熟】, hololive, ホロライブ, Neuro, Vedal, 中字, 搬运], category: vtb切片}
+  # 歌曲/MV/PV
+  - {keywords: [MV, 翻唱, cover, Cover, 歌ってみた, 歌词, 新曲, 单曲, 无损, Hi-Res, feat.], category: 歌曲MV}
+  - {keywords: [PV, 原创], category: 歌曲MV, weight: 0.5}
+  # MAD / 剪辑
+  - {keywords: [MAD, AMV, 误解, 混剪, 巡礼], category: MAD剪辑}
+  # MMD / 舞蹈
+  - {keywords: [MMD, 舞蹈, dance, Dance], category: MMD舞蹈}
+  # 手书 / 同人动画
+  - {keywords: [手书], category: 手书动画}
+  # 绘画
+  - {keywords: [绘画, 作画, 画师, 素描, 上色, 构图, 手绘, 马克笔, 水彩, 涂鸦], category: 绘画}
+  # cos
+  - {keywords: [cos, 正片, c服], category: cos}
+  # asmr / 音声
+  - {keywords: [asmr, ASMR, 音声], category: asmr音声}
+  # 学习 / 教程
+  - {keywords: [教程, 干货, 入门, 学习, 指南, 笔记, 讲解], category: 学习教程}
+  # vlog / 日常
+  - {keywords: [vlog, Vlog, 旅行, 探店, 日常], category: vlog日常}
+  # 游戏
+  - {keywords: [明日方舟, 泰拉, 干员], category: 游戏明日方舟}
+  - {keywords: [原神, 提瓦特], category: 游戏原神}
+  - {keywords: [星穹铁道, 崩铁], category: 游戏星穹铁道}
+  - {keywords: [崩坏], category: 游戏崩坏}
+  - {keywords: [ブルアガ, 蔚蓝档案, 阿罗娜], category: 游戏蔚蓝档案}
+  - {keywords: [幻想乡, 博丽, 灵梦], category: 东方Project}
+  - {regex: "东方[^方否]", category: 东方Project, weight: 0.5}
+  - {keywords: [洛天依, 天依], category: 洛天依}
+
+tag_rules: []

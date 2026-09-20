@@ -1,0 +1,25 @@
+# 含 Cookie 的本地配置，绝不提交
+config.yaml
+.env
+
+# 运行产物与虚拟环境
+data/
+.venv/
+dist/
+build/
+*.spec
+*.egg-info/
+
+__pycache__/
+*.pyc
+
+# AI 工具链的本地状态（会话记录/计划/钩子状态），不属于项目源码
+.mimosa/
+.zcode/
+src/.mimosa/
+
+# 本地自动备份（ZCode 工具在改文件前生成的），不公开
+_backup_before_fix/
+
+# 接手报告：含个人收藏夹名/ID/统计，仅本地保留，不进公开仓库
+HANDOFF.md
