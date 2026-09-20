@@ -9,7 +9,7 @@ description = "B站收藏夹批量分类工具：导出 → 规则+AI 分类 →
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "MIT" }
-authors = [{ name = "bili-favlist contributors" }]
+authors = [{ name = "Frostleaf0929", email = "126386160+Frostleaf0929@users.noreply.github.com" }]
 keywords = ["bilibili", "favorites", "classifier", "gui", "tool"]
 classifiers = [
     "Programming Language :: Python :: 3",
