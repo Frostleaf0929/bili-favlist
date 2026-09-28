@@ -1,4 +1,4 @@
-# bili-favlist · B站收藏夹批量分类工作台
+# bili-favlist · B站收藏夹批量分类工作台 [未完成]
 
 <p align="center">
   <strong>把爆掉的 B 站收藏夹，变成可持续运转的分类流水线</strong><br/>
