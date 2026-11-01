@@ -23,3 +23,7 @@ _backup_before_fix/
 
 # 接手报告：含个人收藏夹名/ID/统计，仅本地保留，不进公开仓库
 HANDOFF.md
+
+# 本地工作记录（含个人收藏夹名等隐私），不进公开仓库
+WORKLOG.md
+logs/

@@ -1,0 +1,524 @@
+<!doctype html>
+<!-- bili-favlist UI 重构原型 v0（2026-11-02）· 数据全部虚构（规则7）· 规范见 design/UI-SPEC.md -->
+<!-- 交互：左侧导航切页 · 顶栏换强调色/深浅色 · 设置页可关毛玻璃/切密度 · 条目库可筛选/批量 · 写回可走 APPLY 确认弹窗（演示，不执行） -->
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>bili-favlist · UI 重构原型 v0</title>
+<style>
+#bfp{--font:-apple-system,"SF Pro Text","Segoe UI Variable","Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
+--fs-xs:12px;--fs-sm:13px;--fs-md:14px;--fs-lg:15px;--fs-xl:18px;--fs-2xl:22px;--fs-3xl:28px;
+--s1:4px;--s2:8px;--s3:12px;--s4:16px;--s5:24px;--s6:32px;
+--r-sm:8px;--r-md:12px;--r-lg:16px;--r-pill:999px;
+--dur:.28s;--ease:cubic-bezier(.22,.61,.36,1);
+--bg:#0f1116;--surface-glass:rgba(26,31,43,.55);--surface-solid:#1a1f2b;
+--card-border:rgba(255,255,255,.07);--card-shadow:0 8px 28px rgba(0,0,0,.28);
+--hover:rgba(255,255,255,.05);--text:#e9edf4;--text-2:#9aa4b8;--text-3:#667089;
+--ok:#34c77b;--warn:#d3a95e;--danger:#ef5b6e;
+--st-auto:#34c77b;--st-hot:#4f8cff;--st-hot2:#b18cf0;--st-ai:#3fc1c9;--st-human:#2fb8a6;--st-review:#d3a95e;--st-low:#8a93a6;--st-none:#ef5b6e;
+--accent:#23ade5;
+--glass-blur:18px;
+font-family:var(--font);font-size:var(--fs-md);color:var(--text);background:var(--bg);position:relative;min-height:100vh}
+#bfp[data-accent="indigo"]{--accent:#7b7ff2}
+#bfp[data-accent="mint"]{--accent:#3ecfa5}
+#bfp[data-accent="wisteria"]{--accent:#b18cf0}
+#bfp[data-accent="amber"]{--accent:#e8a53e}
+#bfp[data-accent="rose"]{--accent:#ef7ba0}
+#bfp[data-theme="light"]{--bg:#f4f6f9;--surface-glass:rgba(255,255,255,.66);--surface-solid:#ffffff;
+--card-border:rgba(20,30,50,.08);--card-shadow:0 6px 22px rgba(20,30,50,.08);
+--hover:rgba(20,30,50,.045);--text:#1b2230;--text-2:#5a6474;--text-3:#98a1b0;
+--ok:#1f9d64;--warn:#b8893c;--danger:#d94a5c;
+--st-auto:#1f9d64;--st-hot:#2f6fd6;--st-hot2:#8a5cd8;--st-ai:#1e8f96;--st-human:#1f8a7a;--st-review:#8a6420;--st-low:#5f6875;--st-none:#c43a4c;
+--accent:#00a1d6}
+#bfp[data-accent="indigo"][data-theme="light"]{--accent:#5856d6}
+#bfp[data-accent="mint"][data-theme="light"]{--accent:#2aa87e}
+#bfp[data-accent="wisteria"][data-theme="light"]{--accent:#9a6ee8}
+#bfp[data-accent="amber"][data-theme="light"]{--accent:#c9862a}
+#bfp[data-accent="rose"][data-theme="light"]{--accent:#e05c86}
+#bfp *{box-sizing:border-box}
+#bfp .wall{position:absolute;inset:0;pointer-events:none;background:
+radial-gradient(640px 420px at 88% -6%,color-mix(in srgb,var(--accent) 15%,transparent),transparent 70%),
+radial-gradient(520px 400px at -6% 102%,color-mix(in srgb,var(--accent) 9%,transparent),transparent 70%)}
+#bfp .app{position:relative;display:grid;grid-template-columns:224px minmax(0,1fr);min-height:100vh;transition:grid-template-columns var(--dur) var(--ease)}
+#bfp.sidecol .app{grid-template-columns:64px minmax(0,1fr)}
+#bfp .side{border-right:1px solid var(--card-border);padding:var(--s4) var(--s3);display:flex;flex-direction:column;gap:2px}
+#bfp .brand{display:flex;align-items:center;gap:10px;width:100%;padding:10px;border:0;background:none;color:var(--text);font:inherit;font-size:var(--fs-lg);font-weight:600;cursor:pointer;border-radius:var(--r-sm)}
+#bfp .brand svg{flex:none}
+#bfp .side nav{display:flex;flex-direction:column;gap:2px;margin-top:var(--s3);flex:1}
+#bfp .nav{display:flex;align-items:center;gap:10px;width:100%;padding:9px 10px;border:0;background:none;color:var(--text-2);font:inherit;font-size:var(--fs-md);cursor:pointer;border-radius:var(--r-sm);position:relative;text-align:left;transition:background var(--dur) var(--ease),color var(--dur) var(--ease)}
+#bfp .nav svg{flex:none;opacity:.9}
+#bfp .nav:hover{color:var(--text);background:var(--hover)}
+#bfp .nav.on{color:var(--text);background:var(--hover)}
+#bfp .nav.on::before{content:"";position:absolute;left:-12px;top:8px;bottom:8px;width:3px;border-radius:2px;background:var(--accent)}
+#bfp .nav .nd{margin-left:auto;font-size:var(--fs-xs);background:color-mix(in srgb,var(--warn) 20%,transparent);color:var(--warn);border-radius:var(--r-pill);padding:1px 8px}
+#bfp .grouplbl{font-size:var(--fs-xs);color:var(--text-3);letter-spacing:.1em;padding:14px 10px 4px}
+#bfp .sidefoot{display:flex;flex-direction:column;gap:6px}
+#bfp .conn{display:flex;align-items:center;gap:8px;padding:8px 10px;color:var(--text-3);font-size:var(--fs-xs)}
+#bfp .lamp{width:8px;height:8px;border-radius:50%;background:var(--ok);box-shadow:0 0 0 3px color-mix(in srgb,var(--ok) 18%,transparent)}
+#bfp.sidecol .lbl,#bfp.sidecol .grouplbl,#bfp.sidecol .conn span:not(.lamp){display:none}
+#bfp.sidecol .nav{justify-content:center;padding:11px 0}
+#bfp.sidecol .nav .nd{position:absolute;top:2px;right:6px;padding:0 5px}
+#bfp .main{position:relative;min-width:0}
+#bfp .topbar{display:flex;align-items:center;justify-content:space-between;gap:var(--s4);padding:var(--s5) var(--s6) var(--s4)}
+#bfp .topbar h1{font-size:var(--fs-2xl);margin:0;font-weight:600}
+#bfp .topbar .sub{margin:2px 0 0;color:var(--text-2);font-size:var(--fs-sm)}
+#bfp .tbright{display:flex;align-items:center;gap:var(--s3)}
+#bfp .pill{display:inline-flex;align-items:center;gap:7px;font-size:var(--fs-xs);color:var(--text-2);border:1px solid var(--card-border);border-radius:var(--r-pill);padding:5px 12px}
+#bfp .pill b{color:var(--text);font-variant-numeric:tabular-nums}
+#bfp .demo{background:color-mix(in srgb,var(--warn) 14%,transparent);color:var(--warn);border-color:transparent}
+#bfp .iconbtn{display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;border-radius:var(--r-sm);border:1px solid var(--card-border);background:none;color:var(--text-2);cursor:pointer}
+#bfp .iconbtn:hover{color:var(--text);background:var(--hover)}
+#bfp .adot{width:18px;height:18px;border-radius:50%;border:2px solid transparent;cursor:pointer;padding:0;flex:none}
+#bfp .adot.on{border-color:var(--text)}
+#bfp .accents{display:flex;gap:7px;align-items:center;padding:0 4px}
+#bfp .page{display:none;padding:0 var(--s6) var(--s6)}
+#bfp .page.on{display:block}
+#bfp .grid{display:grid;gap:var(--s4)}
+#bfp .g4{grid-template-columns:repeat(4,minmax(0,1fr))}
+#bfp .g2{grid-template-columns:repeat(2,minmax(0,1fr))}
+#bfp .g3{grid-template-columns:repeat(3,minmax(0,1fr))}
+#bfp .mt{margin-top:var(--s4)}
+#bfp .card{background:var(--surface-solid);border:1px solid var(--card-border);border-radius:var(--r-lg);padding:var(--s4);box-shadow:var(--card-shadow);transition:transform var(--dur) var(--ease),border-color var(--dur) var(--ease)}
+#bfp[data-glass="on"] .card{background:var(--surface-glass);backdrop-filter:blur(var(--glass-blur)) saturate(1.15)}
+#bfp .card:hover{transform:translateY(-2px);border-color:color-mix(in srgb,var(--accent) 35%,var(--card-border))}
+#bfp .card h3{margin:0 0 var(--s3);font-size:var(--fs-md);font-weight:600;display:flex;align-items:center;gap:8px}
+#bfp .card h3 svg{color:var(--accent)}
+#bfp .card .hint{color:var(--text-3);font-size:var(--fs-xs);margin:var(--s2) 0 0}
+#bfp .stat .k{font-size:var(--fs-xs);color:var(--text-2)}
+#bfp .stat .v{font-size:var(--fs-3xl);font-weight:600;font-variant-numeric:tabular-nums;margin:6px 0 2px}
+#bfp .stat .d{font-size:var(--fs-xs);color:var(--text-3)}
+#bfp .badge{display:inline-flex;align-items:center;gap:6px;font-size:var(--fs-xs);padding:3px 10px;border-radius:var(--r-pill);background:color-mix(in srgb,var(--sc) 15%,transparent);color:var(--sc);white-space:nowrap}
+#bfp .badge::before{content:"";width:6px;height:6px;border-radius:50%;background:var(--sc);flex:none}
+#bfp .st-auto{--sc:var(--st-auto)}#bfp .st-hot{--sc:var(--st-hot)}#bfp .st-hot2{--sc:var(--st-hot2)}#bfp .st-ai{--sc:var(--st-ai)}#bfp .st-human{--sc:var(--st-human)}#bfp .st-review{--sc:var(--st-review)}#bfp .st-low{--sc:var(--st-low)}#bfp .st-none{--sc:var(--st-none)}
+#bfp .btn{display:inline-flex;align-items:center;gap:7px;font:inherit;font-size:var(--fs-sm);padding:8px 14px;border-radius:var(--r-sm);border:1px solid transparent;cursor:pointer;color:var(--text-2);background:var(--hover);transition:filter var(--dur) var(--ease),background var(--dur) var(--ease)}
+#bfp .btn:hover{filter:brightness(1.12);color:var(--text)}
+#bfp .btn.primary{background:var(--accent);color:#fff}
+#bfp .btn.danger{background:var(--danger);color:#fff}
+#bfp .btn.ghost{background:none;border-color:var(--card-border)}
+#bfp .btn:disabled{opacity:.45;cursor:not-allowed;filter:none}
+#bfp .btnrow{display:flex;gap:var(--s2);flex-wrap:wrap;align-items:center}
+#bfp .seg{display:inline-flex;background:var(--hover);border-radius:var(--r-sm);padding:3px;gap:2px}
+#bfp .seg button{border:0;background:none;padding:6px 14px;border-radius:7px;color:var(--text-2);font:inherit;font-size:var(--fs-sm);cursor:pointer}
+#bfp .seg button.on{background:var(--surface-solid);color:var(--text);box-shadow:0 1px 5px rgba(0,0,0,.22)}
+#bfp [data-segpanel]{display:none}
+#bfp [data-segpanel].on{display:block}
+#bfp .chip{padding:5px 13px;border-radius:var(--r-pill);border:1px solid var(--card-border);background:none;color:var(--text-2);font:inherit;font-size:var(--fs-sm);cursor:pointer}
+#bfp .chip.on{background:color-mix(in srgb,var(--sc,var(--accent)) 16%,transparent);color:var(--sc,var(--text));border-color:color-mix(in srgb,var(--sc,var(--accent)) 38%,transparent)}
+#bfp .chip.st-auto{--sc:var(--st-auto)}#bfp .chip.st-hot{--sc:var(--st-hot)}#bfp .chip.st-hot2{--sc:var(--st-hot2)}#bfp .chip.st-ai{--sc:var(--st-ai)}#bfp .chip.st-review{--sc:var(--st-review)}#bfp .chip.st-low{--sc:var(--st-low)}
+#bfp .toolrow{display:flex;gap:var(--s2);flex-wrap:wrap;align-items:center;margin-bottom:var(--s3)}
+#bfp .inp{background:var(--hover);border:1px solid var(--card-border);border-radius:var(--r-sm);color:var(--text);padding:8px 10px;font:inherit;font-size:var(--fs-sm);min-width:0}
+#bfp .inp:focus{outline:none;border-color:var(--accent)}
+#bfp select.inp{cursor:pointer}
+#bfp table{width:100%;border-collapse:collapse;font-size:var(--fs-sm)}
+#bfp th{text-align:left;color:var(--text-2);font-weight:500;font-size:var(--fs-xs);padding:8px 10px;border-bottom:1px solid var(--card-border);white-space:nowrap}
+#bfp td{padding:11px 10px;border-bottom:1px solid color-mix(in srgb,var(--card-border) 55%,transparent);vertical-align:middle}
+#bfp tr:hover td{background:var(--hover)}
+#bfp[data-density="compact"] td{padding:6px 10px}
+#bfp .tt b{display:block;font-weight:500;max-width:340px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#bfp .tt span{color:var(--text-3);font-size:var(--fs-xs)}
+#bfp .num{font-variant-numeric:tabular-nums}
+#bfp .mut{color:var(--text-2)}
+#bfp .faint{color:var(--text-3);font-size:var(--fs-xs)}
+#bfp .meter{height:8px;border-radius:var(--r-pill);background:var(--hover);overflow:hidden}
+#bfp .meter i{display:block;height:100%;border-radius:var(--r-pill);background:var(--accent)}
+#bfp .meter i.warn{background:var(--warn)}
+#bfp .dbar{display:grid;grid-template-columns:96px 1fr 52px;gap:10px;align-items:center;margin:7px 0;font-size:var(--fs-sm)}
+#bfp .dbar .tr{height:13px;border-radius:4px;background:var(--hover);overflow:hidden}
+#bfp .dbar .tr i{display:block;height:100%;background:var(--accent);border-radius:4px}
+#bfp .dbar .n{text-align:right;color:var(--text-2);font-variant-numeric:tabular-nums;font-size:var(--fs-xs)}
+#bfp .leaves{display:flex;flex-wrap:wrap;gap:7px;margin-top:var(--s2)}
+#bfp .leaf{font-size:var(--fs-xs);color:var(--text-2);border:1px solid var(--card-border);border-radius:var(--r-sm);padding:4px 9px}
+#bfp .leaf b{color:var(--text);font-weight:500;font-variant-numeric:tabular-nums;margin-left:5px}
+#bfp .rev{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:var(--s3);align-items:center}
+#bfp .rev .why{display:flex;gap:6px;flex-wrap:wrap;margin-top:7px}
+#bfp .switch{position:relative;display:inline-flex;align-items:center;gap:9px;cursor:pointer;color:var(--text-2);font-size:var(--fs-sm)}
+#bfp .switch input{position:absolute;opacity:0}
+#bfp .switch .knob{width:36px;height:20px;border-radius:var(--r-pill);background:var(--hover);border:1px solid var(--card-border);position:relative;transition:background var(--dur) var(--ease)}
+#bfp .switch .knob::after{content:"";position:absolute;top:2px;left:2px;width:14px;height:14px;border-radius:50%;background:var(--text-2);transition:transform var(--dur) var(--ease),background var(--dur) var(--ease)}
+#bfp .switch input:checked+.knob{background:color-mix(in srgb,var(--accent) 45%,transparent);border-color:transparent}
+#bfp .switch input:checked+.knob::after{transform:translateX(16px);background:#fff}
+#bfp .danger-zone{border-color:color-mix(in srgb,var(--danger) 45%,var(--card-border))}
+#bfp .danger-zone:hover{border-color:var(--danger)}
+#bfp .gate{display:flex;gap:var(--s3);align-items:flex-start}
+#bfp .gate .gi{width:34px;height:34px;border-radius:var(--r-md);display:flex;align-items:center;justify-content:center;flex:none}
+#bfp .gate .gi.lock{background:color-mix(in srgb,var(--danger) 16%,transparent);color:var(--danger)}
+#bfp .gate .gi.soft{background:color-mix(in srgb,var(--warn) 16%,transparent);color:var(--warn)}
+#bfp .gate .gi.free{background:color-mix(in srgb,var(--ok) 16%,transparent);color:var(--ok)}
+#bfp .gate b{display:block;font-size:var(--fs-md)}
+#bfp .gate .gc{color:var(--text-3);font-size:var(--fs-xs);margin-top:2px}
+#bfp .gnum{font-size:var(--fs-xl);font-weight:600;font-variant-numeric:tabular-nums}
+#bfp dialog{border:0;border-radius:var(--r-lg);background:var(--surface-solid);color:var(--text);padding:var(--s5);width:min(460px,92vw);box-shadow:0 24px 80px rgba(0,0,0,.5);font:inherit;font-size:var(--fs-md)}
+#bfp dialog::backdrop{background:rgba(6,8,12,.45);backdrop-filter:blur(14px) saturate(1.1) brightness(.97)}
+#bfp dialog .dhead{display:flex;align-items:center;gap:10px;margin-bottom:var(--s3)}
+#bfp dialog .dhead svg{color:var(--danger)}
+#bfp dialog .dhead b{font-size:var(--fs-lg)}
+#bfp dialog .dhead .x{margin-left:auto}
+#bfp dialog .dgroups{margin:var(--s3) 0;padding:var(--s3) var(--s4);background:var(--hover);border-radius:var(--r-md);font-size:var(--fs-sm)}
+#bfp dialog .dgroups div{display:flex;justify-content:space-between;padding:4px 0}
+#bfp dialog label{display:block;margin:var(--s3) 0;font-size:var(--fs-sm);color:var(--text-2)}
+#bfp dialog .inp{width:100%;margin-top:6px}
+#bfp .dact{display:flex;justify-content:flex-end;gap:var(--s2);margin-top:var(--s4)}
+#bfp .toast{position:absolute;left:50%;bottom:26px;transform:translate(-50%,16px);background:var(--surface-solid);border:1px solid var(--card-border);color:var(--text);border-radius:var(--r-md);padding:10px 18px;font-size:var(--fs-sm);box-shadow:var(--card-shadow);opacity:0;pointer-events:none;transition:opacity var(--dur) var(--ease),transform var(--dur) var(--ease);z-index:5}
+#bfp .toast.show{opacity:1;transform:translate(-50%,0)}
+#bfp .bulkbar{display:none;align-items:center;gap:var(--s3);margin-bottom:var(--s3);padding:10px var(--s4);border-radius:var(--r-md);background:color-mix(in srgb,var(--accent) 12%,transparent);border:1px solid color-mix(in srgb,var(--accent) 35%,transparent)}
+#bfp .bulkbar.show{display:flex}
+#bfp .pgfoot{display:flex;justify-content:space-between;align-items:center;color:var(--text-3);font-size:var(--fs-xs);margin-top:var(--s3)}
+#bfp .concl{margin:0;padding-left:18px;color:var(--text-2);font-size:var(--fs-sm);line-height:1.9}
+#bfp .split{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,1fr);gap:var(--s4)}
+@media (max-width:1100px){#bfp .g4{grid-template-columns:repeat(2,minmax(0,1fr))}#bfp .g3,#bfp .g2,#bfp .split{grid-template-columns:minmax(0,1fr)}}
+#bfp a{color:var(--accent)}
+</style>
+</head>
+<body>
+<div id="bfp" data-theme="dark" data-accent="bili" data-glass="on" data-density="cozy">
+  <div class="wall"></div>
+  <div class="app">
+    <aside class="side">
+      <button class="brand" onclick="toggleSide()" title="收起 / 展开">
+        <i data-lucide="clapperboard"></i><span class="lbl">bili-favlist</span>
+      </button>
+      <nav>
+        <button class="nav on" data-page="dash"><i data-lucide="layout-dashboard"></i><span class="lbl">总览</span></button>
+        <div class="grouplbl lbl">整理</div>
+        <button class="nav" data-page="items"><i data-lucide="list"></i><span class="lbl">条目库</span></button>
+        <button class="nav" data-page="review"><i data-lucide="inbox"></i><span class="lbl">复核队列</span><span class="nd lbl">3</span></button>
+        <button class="nav" data-page="tax"><i data-lucide="folder-tree"></i><span class="lbl">分类与规则</span></button>
+        <div class="grouplbl lbl">智能</div>
+        <button class="nav" data-page="learn"><i data-lucide="graduation-cap"></i><span class="lbl">学习与评估</span></button>
+        <div class="grouplbl lbl">执行</div>
+        <button class="nav" data-page="wb"><i data-lucide="upload"></i><span class="lbl">写回</span></button>
+      </nav>
+      <div class="sidefoot">
+        <button class="nav" data-page="settings"><i data-lucide="settings"></i><span class="lbl">设置与个性化</span></button>
+        <div class="conn"><span class="lamp"></span><span class="lbl">已连接 B站 · Cookie 有效</span></div>
+      </div>
+    </aside>
+    <main class="main">
+      <header class="topbar">
+        <div><h1 id="ptitle">总览</h1><p class="sub" id="psub">分类流水线一屏掌握</p></div>
+        <div class="tbright">
+          <span class="pill demo">原型 · 虚构数据</span>
+          <span class="pill"><i data-lucide="gauge"></i>今日写回 <b>5/10</b></span>
+          <div class="accents">
+            <button class="adot on" data-a="bili" style="background:#23ade5" title="B站蓝"></button>
+            <button class="adot" data-a="indigo" style="background:#7b7ff2" title="靛蓝"></button>
+            <button class="adot" data-a="mint" style="background:#3ecfa5" title="薄荷"></button>
+            <button class="adot" data-a="wisteria" style="background:#b18cf0" title="紫藤"></button>
+            <button class="adot" data-a="amber" style="background:#e8a53e" title="琥珀"></button>
+            <button class="adot" data-a="rose" style="background:#ef7ba0" title="蔷薇"></button>
+          </div>
+          <button class="iconbtn" id="themebtn" onclick="toggleTheme()" title="深色 / 浅色"><i data-lucide="moon"></i></button>
+        </div>
+      </header>
+
+      <section class="page on" id="page-dash">
+        <div class="grid g4">
+          <div class="card stat"><div class="k">收藏总数</div><div class="v">21,914</div><div class="d">96 个收藏夹 · 失效 485</div></div>
+          <div class="card stat"><div class="k">已自动分类</div><div class="v">13,197</div><div class="d">规则 6,542 · 热词 6,279 · 个人化 376</div></div>
+          <div class="card stat"><div class="k">待复核</div><div class="v">397</div><div class="d">第 9 遍改判 710 条</div></div>
+          <div class="card stat"><div class="k">未分类</div><div class="v">7,721</div><div class="d">主要为无信息量长尾</div></div>
+        </div>
+        <div class="grid g2 mt">
+          <div class="card">
+            <h3><i data-lucide="play"></i>分类流水线</h3>
+            <p class="faint" style="margin:0 0 12px">最近一遍：第 9 遍 · 2026-09-20 07:17 · 改判 710 条 · 新强化规则 50 条</p>
+            <div class="btnrow">
+              <button class="btn primary" onclick="toast('演示模式：流水线未真实运行')"><i data-lucide="play"></i>跑一遍</button>
+              <button class="btn" onclick="toast('演示模式：流水线未真实运行')"><i data-lucide="rotate-cw"></i>连跑两遍（复查）</button>
+              <button class="btn ghost" onclick="toast('演示模式：已导出 AI 队列（虚构）')">导出 AI 队列</button>
+            </div>
+          </div>
+          <div class="card">
+            <h3><i data-lucide="gauge"></i>写回额度与盲测</h3>
+            <div class="dbar"><span class="mut">今日额度</span><span class="tr"><i style="width:50%"></i></span><span class="n">5/10</span></div>
+            <div class="dbar"><span class="mut">细分夹重合率</span><span class="tr"><i style="width:64%"></i></span><span class="n">64%</span></div>
+            <div class="dbar"><span class="mut">大分类夹口径</span><span class="tr"><i style="width:79%"></i></span><span class="n">79%</span></div>
+            <p class="hint">额度在「写回」页可调；重合率来自最近一次盲测（忽略夹来源）。</p>
+          </div>
+        </div>
+        <div class="grid g2 mt">
+          <div class="card">
+            <h3><i data-lucide="bar-chart-3"></i>分类分布 · 前 8</h3>
+            <div class="dbar"><span>歌曲MV</span><span class="tr"><i style="width:100%;opacity:.85"></i></span><span class="n">4,037</span></div>
+            <div class="dbar"><span>绘画</span><span class="tr"><i style="width:49%;opacity:.72"></i></span><span class="n">1,966</span></div>
+            <div class="dbar"><span>cos</span><span class="tr"><i style="width:42%;opacity:.62"></i></span><span class="n">1,709</span></div>
+            <div class="dbar"><span>日游</span><span class="tr"><i style="width:22%;opacity:.52"></i></span><span class="n">881</span></div>
+            <div class="dbar"><span>asmr</span><span class="tr"><i style="width:19%;opacity:.44"></i></span><span class="n">760</span></div>
+            <div class="dbar"><span>vtb切片</span><span class="tr"><i style="width:12%;opacity:.37"></i></span><span class="n">489</span></div>
+            <div class="dbar"><span>MV·单推</span><span class="tr"><i style="width:12%;opacity:.30"></i></span><span class="n">479</span></div>
+            <div class="dbar"><span>【个人化】</span><span class="tr"><i style="width:9%;opacity:.24"></i></span><span class="n">376</span></div>
+          </div>
+          <div class="card">
+            <h3><i data-lucide="history"></i>最近改判（第 9 遍 · 节选）</h3>
+            <table><tbody>
+              <tr><td class="tt"><b>【4K】原创曲「星轨」 MV</b></td><td><span class="badge st-hot">MV·单推</span></td><td><span class="faint">→</span></td><td><span class="badge st-auto">歌曲MV</span></td></tr>
+              <tr><td class="tt"><b>手书｜春 Petit Amour</b></td><td><span class="badge st-low">未分类</span></td><td><span class="faint">→</span></td><td><span class="badge st-auto">手书动画</span></td></tr>
+              <tr><td class="tt"><b>cos 正片｜蔚蓝档案 阿罗娜</b></td><td><span class="badge st-hot">绘画</span></td><td><span class="faint">→</span></td><td><span class="badge st-auto">cos</span></td></tr>
+              <tr><td class="tt"><b>Blender 零基础入门 03</b></td><td><span class="badge st-low">未分类</span></td><td><span class="faint">→</span></td><td><span class="badge st-auto">学习教程</span></td></tr>
+            </tbody></table>
+            <p class="hint">改判条目自动进入复核队列，等你逐条确认。</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="page" id="page-items">
+        <div class="toolrow">
+          <button class="chip on st-auto" data-f="all" style="--sc:var(--accent)">全部</button>
+          <button class="chip st-auto" data-f="auto">规则命中</button>
+          <button class="chip st-hot" data-f="hot">热词命中</button>
+          <button class="chip st-hot2" data-f="hot2">个人化</button>
+          <button class="chip st-ai" data-f="ai">AI</button>
+          <button class="chip st-review" data-f="review">待复核</button>
+          <button class="chip st-low" data-f="low">未分类</button>
+          <span style="flex:1"></span>
+          <input class="inp" placeholder="搜索标题 / UP主 / 标签" style="width:220px">
+          <span class="seg"><button data-d="cozy" class="denopt on" onclick="setDensity('cozy')">舒适</button><button data-d="compact" class="denopt" onclick="setDensity('compact')">紧凑</button></span>
+        </div>
+        <div class="bulkbar" id="bulkbar">
+          <b class="num" id="bulknum">0</b><span class="mut">条已选中</span>
+          <select class="inp" style="width:160px"><option>设为分类…</option><option>歌曲MV</option><option>绘画</option><option>【个人化】</option></select>
+          <button class="btn" onclick="toast('演示模式：未真实标注')">应用</button>
+        </div>
+        <div class="card" style="padding:0 4px">
+          <table>
+            <thead><tr><th style="width:34px"><input type="checkbox" id="ckall" aria-label="全选"></th><th>标题 / UP主</th><th>状态</th><th>推荐分类</th><th>依据</th><th>收藏时间</th></tr></thead>
+            <tbody id="itemsbody">
+              <tr data-st="hot"><td><input type="checkbox" aria-label="选择"></td><td class="tt"><b>【4K】原创曲「星轨」MV</b><span>星野工作室</span></td><td><span class="badge st-hot">热词</span></td><td>歌曲MV</td><td class="faint">tag:原创 ×2 · 标题:MV</td><td class="num mut">10-31</td></tr>
+              <tr data-st="auto"><td><input type="checkbox" aria-label="选择"></td><td class="tt"><b>城市夜景 vlog EP.12</b><span>远行日记</span></td><td><span class="badge st-auto">规则</span></td><td>日游</td><td class="faint">tag:vlog ×3 · 标题:vlog</td><td class="num mut">10-30</td></tr>
+              <tr data-st="auto"><td><input type="checkbox" aria-label="选择"></td><td class="tt"><b>Blender 零基础入门 03 建模</b><span>建模小站</span></td><td><span class="badge st-auto">规则</span></td><td>学习教程</td><td class="faint">tag:教程 ×2 · tag:blender</td><td class="num mut">10-30</td></tr>
+              <tr data-st="hot"><td><input type="checkbox" aria-label="选择"></td><td class="tt"><b>深夜雨声 · 助眠 ASMR</b><span>白噪音研究所</span></td><td><span class="badge st-hot">热词</span></td><td>asmr</td><td class="faint">u:白噪音研究所 · tag:asmr</td><td class="num mut">10-29</td></tr>
+              <tr data-st="review"><td><input type="checkbox" aria-label="选择"></td><td class="tt"><b>手书｜春 Petit Amour</b><span>画画的月月</span></td><td><span class="badge st-review">待复核</span></td><td>手书动画</td><td class="faint">改判：未分类 → 手书动画</td><td class="num mut">10-29</td></tr>
+              <tr data-st="hot"><td><input type="checkbox" aria-label="选择"></td><td class="tt"><b>cos 正片｜蔚蓝档案 阿罗娜</b><span>蓝白工作室</span></td><td><span class="badge st-hot">热词</span></td><td>cos</td><td class="faint">tag:cos正片 ×2 · 标题:cos</td><td class="num mut">10-28</td></tr>
+              <tr data-st="auto"><td><input type="checkbox" aria-label="选择"></td><td class="tt"><b>【切片】歌回精选 · 本周份</b><span>切片通知</span></td><td><span class="badge st-auto">规则</span></td><td>vtb切片</td><td class="faint">标题:切片 ×2 · tag:切抜き</td><td class="num mut">10-28</td></tr>
+              <tr data-st="low"><td><input type="checkbox" aria-label="选择"></td><td class="tt"><b>一个月绘画练习合集（打包）</b><span>每日一画</span></td><td><span class="badge st-low">未分类</span></td><td>—</td><td class="faint">标题无信息量 · 待补 tag</td><td class="num mut">10-27</td></tr>
+              <tr data-st="hot2"><td><input type="checkbox" aria-label="选择"></td><td class="tt"><b>那年夏天的广播剧 · 合集</b><span>旧电台</span></td><td><span class="badge st-hot2">个人化</span></td><td>【个人化】</td><td class="faint">个人化特征 ×2（池2 排他）</td><td class="num mut">10-27</td></tr>
+              <tr data-st="ai"><td><input type="checkbox" aria-label="选择"></td><td class="tt"><b>MMD 舞蹈「千本桜」</b><span>舞见实验室</span></td><td><span class="badge st-ai">AI</span></td><td>MMD舞蹈</td><td class="faint">AI 置信 0.86</td><td class="num mut">10-26</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="pgfoot"><span>每页 50 · 第 1 / 439 页 · 共 21,914 条</span><span><button class="btn ghost" disabled>上一页</button> <button class="btn ghost" onclick="toast('演示模式：分页未接数据')">下一页</button></span></div>
+      </section>
+
+      <section class="page" id="page-review">
+        <div class="card" style="margin-bottom:var(--s4)"><div class="gate">
+          <div class="gi soft"><i data-lucide="inbox"></i></div>
+          <div><b>3 条待确认</b><div class="gc">建议每天处理 ≤ 50 条；「确认」按当前建议定类，「不要」标记排除。</div></div>
+        </div></div>
+        <div class="grid" style="gap:var(--s3)">
+          <div class="card rev"><div><b>【切片】歌回精选 · 本周份</b><span class="faint" style="margin-left:8px">切片通知</span>
+            <div class="why"><span class="badge st-review">建议 vtb切片</span><span class="badge st-auto">tag:歌回 ×2</span><span class="badge st-auto">标题:切片</span></div></div>
+            <div class="btnrow"><button class="btn primary" onclick="toast('演示：已确认为 vtb切片')"><i data-lucide="check"></i>确认</button><button class="btn ghost" onclick="toast('演示：已标记排除')">不要</button></div></div>
+          <div class="card rev"><div><b>一个月绘画练习合集（打包）</b><span class="faint" style="margin-left:8px">每日一画</span>
+            <div class="why"><span class="badge st-review">建议 绘画</span><span class="badge st-low">低置信 · 分差 0.2</span></div></div>
+            <div class="btnrow"><button class="btn primary" onclick="toast('演示：已确认为 绘画')"><i data-lucide="check"></i>确认</button><button class="btn ghost" onclick="toast('演示：已标记排除')">不要</button></div></div>
+          <div class="card rev"><div><b>那年夏天的广播剧 · 合集</b><span class="faint" style="margin-left:8px">旧电台</span>
+            <div class="why"><span class="badge st-hot2">建议【个人化】</span><span class="badge st-hot2">池2 排他特征 ×2</span></div></div>
+            <div class="btnrow"><button class="btn primary" onclick="toast('演示：已确认为【个人化】')"><i data-lucide="check"></i>确认</button><button class="btn ghost" onclick="toast('演示：已标记排除')">不要</button></div></div>
+        </div>
+      </section>
+
+      <section class="page" id="page-tax">
+        <div class="seg" data-seg="tax" style="margin-bottom:var(--s4)"><button class="on" data-val="tree">分类体系</button><button data-val="rules">规则</button></div>
+        <div data-segpanel="tax" data-val="tree" class="on">
+          <p class="faint" style="margin:0 0 var(--s3)">8 个大分类夹 · 94 个叶分类 · 91 个已绑定收藏夹 · 3 个未绑（写回时跳过，含【个人化】）</p>
+          <div class="grid g2">
+            <div class="card"><h3><i data-lucide="folder-tree"></i>MV音乐组</h3><div class="leaves"><span class="leaf">歌曲MV<b>4,037</b></span><span class="leaf">MV·单推<b>479</b></span><span class="leaf">MV·ex<b>262</b></span></div></div>
+            <div class="card"><h3><i data-lucide="folder-tree"></i>绘画组</h3><div class="leaves"><span class="leaf">绘画<b>1,966</b></span><span class="leaf">手书动画<b>140</b></span><span class="leaf">MMD舞蹈<b>24</b></span></div></div>
+            <div class="card"><h3><i data-lucide="folder-tree"></i>服饰与出镜</h3><div class="leaves"><span class="leaf">cos<b>1,709</b></span><span class="leaf">vtb切片<b>489</b></span></div></div>
+            <div class="card"><h3><i data-lucide="folder-tree"></i>生活与知识</h3><div class="leaves"><span class="leaf">日游<b>881</b></span><span class="leaf">asmr<b>760</b></span><span class="leaf">学习教程<b>243</b></span></div></div>
+          </div>
+        </div>
+        <div data-segpanel="tax" data-val="rules">
+          <div class="btnrow" style="margin-bottom:var(--s3)">
+            <span class="badge st-auto">手写 6</span><span class="badge st-hot">初筛 19</span><span class="badge st-ai">AI 0</span><span class="badge st-hot2">强化 207</span>
+            <span style="flex:1"></span><button class="btn ghost" onclick="toast('演示：新增规则表单待接')">新增规则</button>
+          </div>
+          <div class="card" style="padding:0 4px"><table>
+            <thead><tr><th>块</th><th>字段</th><th>关键词 / 正则</th><th>分类</th><th>权重</th><th>状态</th></tr></thead>
+            <tbody>
+              <tr><td>手写</td><td>up</td><td>示例字幕组</td><td>vtb切片</td><td class="num">2.0</td><td><span class="badge st-auto">启用</span></td></tr>
+              <tr><td>初筛</td><td>title</td><td>切片 / 熟肉 / 中字 / 搬运</td><td>vtb切片</td><td class="num">1.0</td><td><span class="badge st-auto">启用</span></td></tr>
+              <tr><td>初筛</td><td>title</td><td>MV / 翻唱 / cover / 原创曲</td><td>歌曲MV</td><td class="num">1.0</td><td><span class="badge st-auto">启用</span></td></tr>
+              <tr><td>强化</td><td>tag</td><td>翻唱 <span class="faint">p=0.98 · n=854</span></td><td>歌曲MV</td><td class="num">1.0</td><td><span class="badge st-auto">启用</span></td></tr>
+              <tr><td>强化</td><td>tag</td><td>板绘 <span class="faint">p=1.00 · n=570</span></td><td>绘画</td><td class="num">1.0</td><td><span class="badge st-auto">启用</span></td></tr>
+            </tbody></table></div>
+        </div>
+      </section>
+
+      <section class="page" id="page-learn">
+        <div class="seg" data-seg="learn" style="margin-bottom:var(--s4)"><button class="on" data-val="report">盲测报告</button><button data-val="corpus">语料与学习</button></div>
+        <div data-segpanel="learn" data-val="report" class="on">
+          <div class="grid g3">
+            <div class="card stat"><div class="k">细分夹重合率</div><div class="v">64%</div><div class="d">预测夹与手动夹完全同名</div></div>
+            <div class="card stat"><div class="k">大分类夹口径</div><div class="v">79%</div><div class="d">同组即算对，消化粒度差异</div></div>
+            <div class="card stat"><div class="k">敢下判断的覆盖面</div><div class="v">88%</div><div class="d">其余为无信息量长尾</div></div>
+          </div>
+          <div class="grid g2 mt">
+            <div class="card"><h3><i data-lucide="flask-conical"></i>白话结论</h3>
+              <ul class="concl">
+                <li>客观内容夹上，算法每 5 条预测有 3.2 条与你的手动分类一致。</li>
+                <li>主要分歧集中在细分粒度（MV 系列互串），归并大分类夹后可在组级口径消除。</li>
+                <li>9 个情绪化 / 个人化夹不参与重合率考核，只考核个人化识别（15%）。</li>
+              </ul></div>
+            <div class="card"><h3><i data-lucide="git-compare"></i>主要分歧 · 前 3</h3>
+              <div class="dbar"><span class="mut">MV扩展 ⇒ MV单推</span><span class="tr"><i style="width:100%;opacity:.8"></i></span><span class="n">203</span></div>
+              <div class="dbar"><span class="mut">绘画知识 ⇒ 绘画</span><span class="tr"><i style="width:18%;opacity:.55"></i></span><span class="n">37</span></div>
+              <div class="dbar"><span class="mut">同人音声 ⇒ asmr</span><span class="tr"><i style="width:13%;opacity:.4"></i></span><span class="n">27</span></div>
+              <p class="hint">盲测模式：忽略收藏夹来源与标注，仅用规则 + 热词预测。</p></div>
+          </div>
+        </div>
+        <div data-segpanel="learn" data-val="corpus">
+          <div class="btnrow" style="margin-bottom:var(--s3)">
+            <span class="badge st-hot">池1 客观 59 夹</span><span class="badge st-hot2">池2 个人化 9 夹</span><span class="badge st-review">🛡 保护 17 夹</span>
+            <span style="flex:1"></span>
+          </div>
+          <div class="card"><h3><i data-lucide="database"></i>学习动作</h3>
+            <div class="btnrow">
+              <button class="btn primary" onclick="toast('演示：热词表未重新学习')">学习热词表</button>
+              <button class="btn" onclick="toast('演示：池2 未重新学习')">池2 个人化小学习</button>
+              <button class="btn" onclick="toast('演示：权重未重新学习')">学权重（80/20 回验）</button>
+            </div>
+            <p class="hint">当前学得权重：UP主 4.0 &gt; 标签 1.5 &gt; 标题 0.5（网格搜索顶到边界，可扩大网格重跑）。</p></div>
+        </div>
+      </section>
+
+      <section class="page" id="page-wb">
+        <div class="grid g3" style="margin-bottom:var(--s4)">
+          <div class="card"><div class="gate"><div class="gi lock"><i data-lucide="lock"></i></div><div><span class="gnum">17</span> <b style="display:inline">锁定</b><div class="gc">既不写入、也不移出（池2 自动锁定）</div></div></div></div>
+          <div class="card"><div class="gate"><div class="gi soft"><i data-lucide="alert-triangle"></i></div><div><span class="gnum">0</span> <b style="display:inline">软保护</b><div class="gc">可动，但执行需额外输入确认串</div></div></div></div>
+          <div class="card"><div class="gate"><div class="gi free"><i data-lucide="circle"></i></div><div><span class="gnum">79</span> <b style="display:inline">自由</b><div class="gc">正常参与计划</div></div></div></div>
+        </div>
+        <div class="grid g2">
+          <div class="card"><h3><i data-lucide="shield-check"></i>保护名单（示例行）</h3>
+            <table><thead><tr><th>收藏夹</th><th>级别</th><th style="text-align:right">条数</th></tr></thead><tbody>
+              <tr><td>过往未来</td><td><select class="inp"><option selected>🛡 锁定</option><option>⚠️ 软保护</option><option>○ 自由</option></select></td><td class="num mut" style="text-align:right">419</td></tr>
+              <tr><td>待处理</td><td><select class="inp"><option selected>🛡 锁定</option><option>⚠️ 软保护</option><option>○ 自由</option></select></td><td class="num mut" style="text-align:right">334</td></tr>
+              <tr><td>。</td><td><select class="inp"><option selected>🛡 锁定</option><option>⚠️ 软保护</option><option>○ 自由</option></select></td><td class="num mut" style="text-align:right">175</td></tr>
+              <tr><td>主收藏夹</td><td><select class="inp"><option>🛡 锁定</option><option>⚠️ 软保护</option><option selected>○ 自由</option></select></td><td class="num mut" style="text-align:right">21,914</td></tr>
+            </tbody></table>
+            <p class="hint">改动即时保存；锁定夹被改回自由时需在弹窗中二次确认。</p></div>
+          <div class="card"><h3><i data-lucide="sliders-horizontal"></i>移动范围与限额</h3>
+            <div class="seg" style="margin-bottom:var(--s3)"><button class="on">最小授权</button><button onclick="toast('演示：需显式确认才可放开')">全部未锁定</button></div>
+            <div class="btnrow" style="margin-bottom:var(--s3)">
+              <span class="chip on" style="--sc:var(--accent)">✓ 主收藏夹 · 21,914</span>
+              <span class="chip">示例夹A</span><span class="chip">示例夹B</span>
+            </div>
+            <div class="btnrow" style="margin-bottom:var(--s3)">
+              <label class="faint">单次上限 <input class="inp num" value="5" style="width:64px"></label>
+              <label class="faint">当日上限 <input class="inp num" value="10" style="width:64px"></label>
+            </div>
+            <div class="dbar"><span class="mut">今日用量</span><span class="tr"><i style="width:50%"></i></span><span class="n">5/10</span></div>
+          </div>
+        </div>
+        <div class="card mt">
+          <h3><i data-lucide="list-checks"></i>计划预览 · 3 组 27 条（演示）</h3>
+          <table><tbody>
+            <tr><td>主收藏夹 <span class="faint">→</span> <b>绘画</b></td><td class="num mut">12 条</td></tr>
+            <tr><td>主收藏夹 <span class="faint">→</span> <b>歌曲MV</b></td><td class="num mut">9 条</td></tr>
+            <tr><td>主收藏夹 <span class="faint">→</span> <b>学习教程</b></td><td class="num mut">6 条</td></tr>
+          </tbody></table>
+          <div class="btnrow" style="margin-top:var(--s3)">
+            <button class="btn ghost" onclick="toast('演示：计划已重新生成（虚构）')"><i data-lucide="rotate-cw"></i>重新生成计划</button>
+            <span class="faint">写回前请到 B 站网页端抽查 1–2 条目标夹。</span>
+          </div>
+        </div>
+        <div class="card danger-zone mt">
+          <h3 style="color:var(--danger)"><i data-lucide="alert-triangle"></i>执行写回（危险操作）</h3>
+          <p class="faint" style="margin:0 0 var(--s3)">只移动、不删除。执行需要两层确认：输入 APPLY；计划涉及软保护夹时还需 CONFIRM-SOFT。</p>
+          <button class="btn danger" onclick="openApply()"><i data-lucide="upload"></i>执行移动</button>
+        </div>
+      </section>
+
+      <section class="page" id="page-settings">
+        <div class="grid g2">
+          <div class="card"><h3><i data-lucide="palette"></i>个性化（原型内真实生效）</h3>
+            <p class="faint" style="margin:0 0 8px">主题</p>
+            <div class="seg" style="margin-bottom:var(--s3)">
+              <button class="themeopt on" data-t="dark" onclick="setTheme('dark','dark')">深色</button>
+              <button class="themeopt" data-t="light" onclick="setTheme('light','light')">浅色</button>
+              <button class="themeopt" data-t="auto" onclick="setTheme('auto','auto')">跟随系统</button>
+            </div>
+            <p class="faint" style="margin:0 0 8px">强调色</p>
+            <div class="accents" style="margin-bottom:var(--s3)">
+              <button class="adot on" data-a="bili" style="background:#23ade5" title="B站蓝"></button>
+              <button class="adot" data-a="indigo" style="background:#7b7ff2" title="靛蓝"></button>
+              <button class="adot" data-a="mint" style="background:#3ecfa5" title="薄荷"></button>
+              <button class="adot" data-a="wisteria" style="background:#b18cf0" title="紫藤"></button>
+              <button class="adot" data-a="amber" style="background:#e8a53e" title="琥珀"></button>
+              <button class="adot" data-a="rose" style="background:#ef7ba0" title="蔷薇"></button>
+            </div>
+            <label class="switch"><input type="checkbox" id="glassck" checked onchange="setGlass(this.checked)"><span class="knob"></span>毛玻璃材质（关闭 = 实底，防黑底/闪烁）</label>
+          </div>
+          <div class="card"><h3><i data-lucide="settings-2"></i>判定阈值</h3>
+            <div class="btnrow" style="row-gap:var(--s3)">
+              <label class="faint">最低分 <input class="inp num" value="1.0" style="width:70px"></label>
+              <label class="faint">分差 <input class="inp num" value="0.3" style="width:70px"></label>
+              <label class="faint">最少证据 <input class="inp num" value="2" style="width:56px"></label>
+              <label class="faint">强化 P≥ <input class="inp num" value="0.6" style="width:70px"></label>
+              <label class="faint">样本 n≥ <input class="inp num" value="5" style="width:56px"></label>
+            </div>
+            <div class="btnrow" style="margin-top:var(--s3)"><button class="btn primary" onclick="toast('演示：设置未真实保存')">保存设置</button></div>
+            <p class="hint">单一关键词不允许直接命中——最少证据数即此门槛。</p></div>
+        </div>
+        <div class="card mt"><h3><i data-lucide="bot"></i>AI 在线分类（OpenAI 兼容，仅 https）</h3>
+          <div class="btnrow">
+            <input class="inp" placeholder="https://api.example.com/v1" style="width:240px">
+            <input class="inp" placeholder="模型名" style="width:130px">
+            <input class="inp" placeholder="API Key（仅存本机）" type="password" style="width:160px">
+            <button class="btn ghost" onclick="toast('演示：未真实保存')">保存</button>
+            <button class="btn" onclick="toast('演示：AI 未真实调用')">跑 AI 批量（最新 300 条）</button>
+          </div>
+          <p class="hint">没有云端接口？用「导出 AI 队列 → 会话分析 → 导入 AI 结果」的离线闭环。</p></div>
+      </section>
+
+      <div class="toast" id="toast" role="status" aria-live="polite"></div>
+    </main>
+  </div>
+
+  <dialog id="dlg">
+    <div class="dhead"><i data-lucide="shield-alert"></i><b>确认执行写回</b><button class="iconbtn x" onclick="closeApply()" aria-label="关闭"><i data-lucide="x"></i></button></div>
+    <p class="mut" style="margin:0;font-size:var(--fs-sm)">将把计划中的 <b class="num">27</b> 条视频移动到目标收藏夹。此操作会改动你的 B 站账号数据，只移动、不删除。</p>
+    <div class="dgroups">
+      <div><span>主收藏夹 → 绘画</span><b class="num">12 条</b></div>
+      <div><span>主收藏夹 → 歌曲MV</span><b class="num">9 条</b></div>
+      <div><span>主收藏夹 → 学习教程</span><b class="num">6 条</b></div>
+    </div>
+    <label>输入 APPLY 以确认<input class="inp" id="applyin" placeholder="APPLY" autocomplete="off"></label>
+    <div class="dact"><button class="btn ghost" onclick="closeApply()">取消</button><button class="btn danger" id="applygo" disabled onclick="closeApply();toast('演示模式：未执行任何真实写操作')">执行移动</button></div>
+  </dialog>
+</div>
+<script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+<script>
+(function(){
+var $=function(s){return document.querySelector(s)},$$=function(s){return [].slice.call(document.querySelectorAll(s))};
+var T={dash:["总览","分类流水线一屏掌握"],items:["条目库","筛选、搜索与批量标注"],review:["复核队列","规则改判与低置信条目逐条确认"],tax:["分类与规则","两级分类体系与四块规则"],learn:["学习与评估","盲测重合率 · 语料池 · 热词 · 权重"],wb:["写回","三闸门 · 限额 · 计划预览 · 二次确认"],settings:["设置与个性化","主题 · 强调色 · 材质 · 密度 · 阈值"]};
+function toast(m){var t=$("#toast");t.textContent=m;t.classList.add("show");clearTimeout(toast._t);toast._t=setTimeout(function(){t.classList.remove("show")},2600)}
+window.toast=toast;
+function refreshIcons(){try{window.lucide&&lucide.createIcons()}catch(e){}}
+function setTheme(t,mark){var r=$("#bfp");if(t==="auto"){r.dataset.theme=(window.matchMedia&&window.matchMedia("(prefers-color-scheme: light)").matches)?"light":"dark"}else{r.dataset.theme=t}
+var tb=$("#themebtn");if(tb){tb.innerHTML='<i data-lucide="'+(r.dataset.theme==="dark"?"moon":"sun")+'"></i>'}
+$$(".themeopt").forEach(function(b){b.classList.toggle("on",b.dataset.t===(mark||t))});refreshIcons()}
+window.setTheme=setTheme;
+window.toggleTheme=function(){setTheme($("#bfp").dataset.theme==="dark"?"light":"dark",$("#bfp").dataset.theme==="dark"?"light":"dark")};
+function setAccent(a){$("#bfp").dataset.accent=a;$$(".adot").forEach(function(d){d.classList.toggle("on",d.dataset.a===a)})}
+window.setAccent=setAccent;
+window.setGlass=function(on){$("#bfp").dataset.glass=on?"on":"off"};
+window.setDensity=function(v){$("#bfp").dataset.density=v;$$(".denopt").forEach(function(b){b.classList.toggle("on",b.dataset.d===v)})};
+window.toggleSide=function(){$("#bfp").classList.toggle("sidecol")};
+$$(".adot").forEach(function(d){d.addEventListener("click",function(){setAccent(d.dataset.a)})});
+$$(".nav").forEach(function(b){b.addEventListener("click",function(){$$(".nav").forEach(function(x){x.classList.toggle("on",x===b)});var p=b.dataset.page;$$(".page").forEach(function(s){s.classList.toggle("on",s.id==="page-"+p)});$("#ptitle").textContent=T[p][0];$("#psub").textContent=T[p][1];})});
+$$(".seg[data-seg]").forEach(function(g){g.addEventListener("click",function(e){var b=e.target.closest("button");if(!b||!b.dataset.val)return;$$('.seg[data-seg="'+g.dataset.seg+'"] button').forEach(function(x){x.classList.toggle("on",x===b)});$$('[data-segpanel="'+g.dataset.seg+'"]').forEach(function(p){p.classList.toggle("on",p.dataset.val===b.dataset.val)})})});
+$$(".chip[data-f]").forEach(function(c){c.addEventListener("click",function(){$$(".chip[data-f]").forEach(function(x){x.classList.toggle("on",x===c)});var f=c.dataset.f;$$("#itemsbody tr").forEach(function(tr){tr.style.display=(f==="all"||tr.getAttribute("data-st")===f)?"":"none"})})});
+function bulkSync(){var n=$$("#itemsbody input:checked").length;$("#bulkbar").classList.toggle("show",n>0);if(n>0){$("#bulknum").textContent=n}}
+$("#ckall").addEventListener("change",function(e){$$("#itemsbody input[type=checkbox]").forEach(function(i){i.checked=e.target.checked});bulkSync()});
+$$("#itemsbody input[type=checkbox]").forEach(function(i){i.addEventListener("change",bulkSync)});
+var dlg=$("#dlg");window.openApply=function(){dlg.showModal();$("#applyin").value="";$("#applygo").disabled=true;$("#applyin").focus()};
+window.closeApply=function(){dlg.close()};
+$("#applyin").addEventListener("input",function(e){$("#applygo").disabled=e.target.value!=="APPLY"});
+refreshIcons();
+if(!window.lucide){$$("[data-lucide]").forEach(function(el){el.textContent="◦"})}
+})();
+</script>
+</body>
+</html>
