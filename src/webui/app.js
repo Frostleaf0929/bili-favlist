@@ -84,7 +84,173 @@ $$(".nav").forEach(b => b.addEventListener("click", () => {
   if (b.dataset.page === "items") loadItems(1);
   if (b.dataset.page === "review") loadReview();
   if (b.dataset.page === "tax") { loadTaxData(); loadRulesData(); }
+  if (b.dataset.page === "learn") { loadEvalReport(); loadCorpus(); loadLearnReport(); pollProgress(); }
 }));
+
+/* ---------- 学习与评估（真数据：eval / corpus / learn 全链） ---------- */
+let BG_POLL = null;
+function pollProgress() {
+  api("/api/eval/progress").then(j => {
+    const text = j.running
+      ? "⏳ " + j.task + " " + j.done + "/" + j.total + " " + String(j.current || "").slice(0, 24)
+      : (j.error ? "❌ " + j.error : (j.result ? "✅ " + j.result : ""));
+    $("#bg-progress").textContent = text;
+    if (j.running) { clearTimeout(BG_POLL); BG_POLL = setTimeout(pollProgress, 2000); }
+    else if (BG_POLL) { clearTimeout(BG_POLL); BG_POLL = null; if (j.result) toast(j.result); }
+  }).catch(() => {});
+}
+
+function renderEval(r) {
+  if (!r || !r.at) {
+    $("#ev-acc").textContent = "–"; $("#ev-accg").textContent = "–"; $("#ev-cov").textContent = "–";
+    $("#ev-concl").innerHTML = "<li>还没有评估结果——到「语料与学习」里跑一次盲测。</li>";
+    $("#ev-conf").innerHTML = '<p class="faint">暂无分歧数据。</p>';
+    $("#ev-detail").innerHTML = "";
+    return;
+  }
+  const acc = Math.round((r.accuracy || 0) * 100), accg = Math.round((r.group_accuracy || 0) * 100);
+  const cov = Math.round((r.coverage || 0) * 100);
+  $("#ev-acc").textContent = acc + "%"; $("#ev-accg").textContent = accg + "%"; $("#ev-cov").textContent = cov + "%";
+  $("#ev-cov-d").textContent = "其余主要为无信息量长尾（" + fmt(r.total) + " 条人工分类条目）";
+  $("#ev-concl").innerHTML = (r.conclusion || []).map(c => "<li>" + esc(c) + "</li>").join("") || "<li>（无结论输出）</li>";
+  const conf = (r.top_confusions || []).slice(0, 3);
+  const max = conf.length ? conf[0][1] : 1;
+  const OPS = [.8, .55, .4];
+  $("#ev-conf").innerHTML = conf.length ? conf.map((x, i) =>
+    '<div class="dbar"><span class="mut" title="' + esc(x[0]) + '">' + esc(x[0]) + '</span><span class="tr"><i style="width:'
+    + Math.round(x[1] / max * 100) + '%;opacity:' + OPS[i] + '"></i></span><span class="n">' + fmt(x[1]) + '</span></div>').join("")
+    : '<p class="faint">无。</p>';
+  const bs = r.by_source || {};
+  $("#ev-meta").textContent = "盲测模式：忽略夹来源与标注，仅用规则+热词预测 · 预测来源：规则 " + fmt(bs.rule || 0)
+    + " / 热词 " + fmt(bs.hot || 0) + " / 个人化 " + fmt(bs.hot2 || 0) + " / 未预测 " + fmt(bs.none || 0)
+    + "（评估于 " + r.at + "）";
+  $("#ev-detail").innerHTML =
+    '<table><thead><tr><th>收藏夹</th><th>条目</th><th>有预测</th><th>正确</th><th>一致率</th></tr></thead><tbody>'
+    + (r.per_folder || []).map(f => '<tr><td>' + esc(f.folder) + '</td><td class="num">' + f.n + '</td><td class="num">'
+      + f.covered + '</td><td class="num">' + f.correct + '</td><td class="num">'
+      + (f.accuracy === null ? '<span class="faint">未覆盖</span>' : Math.round(f.accuracy * 100) + "%") + '</td></tr>').join("")
+    + '</tbody></table>'
+    + '<p class="hint" style="margin-top:var(--s3)">高频混淆对（标准答案 ⇒ 引擎判成）：</p><div class="leaves">'
+    + (r.top_confusions || []).map(x => '<span class="leaf">' + esc(x[0]) + '<b>' + fmt(x[1]) + '</b></span>').join("")
+    + '</div><p class="hint" style="margin-top:var(--s3)">组级混淆对：</p><div class="leaves">'
+    + (r.top_group_confusions || []).map(x => '<span class="leaf">' + esc(x[0]) + '<b>' + fmt(x[1]) + '</b></span>').join("")
+    + '</div>';
+}
+async function loadEvalReport() {
+  renderEval(await api("/api/eval/report"));
+}
+
+async function loadCorpus() {
+  const j = await api("/api/corpus");
+  $("#cp-p1").textContent = "池1 客观 " + (j.pool1 || []).length + " 夹";
+  $("#cp-p2").textContent = "池2 个人化 " + (j.pool2 || []).length + " 夹";
+  $("#cp-prot").textContent = "🛡 保护 " + (j.protected || []).length + " 夹";
+  $("#corpus-list").innerHTML = (j.folders || []).map(f =>
+    '<div class="btnrow" style="margin:0"><select class="inp pool-sel" data-title="' + esc(f.title) + '" style="width:130px">'
+    + '<option value="0"' + (f.pool === 0 ? " selected" : "") + '>不参与</option>'
+    + '<option value="1"' + (f.pool === 1 ? " selected" : "") + '>池1·客观</option>'
+    + '<option value="2"' + (f.pool === 2 ? " selected" : "") + '>池2·个人化</option></select>'
+    + '<b style="font-size:var(--fs-sm)">' + esc(f.title) + '</b><span class="faint">' + fmt(f.count) + ' 条</span>'
+    + (f.hint ? '<span class="badge st-review">疑似情绪化</span>' : "")
+    + (f.protected ? '<span class="badge st-low">🛡已保护</span>' : "") + '</div>').join("")
+    || '<p class="faint">评估集为空——先在「评估集与标签工具」里从B站拉取其余收藏夹。</p>';
+  $("#cp-status").textContent = "池1 " + (j.pool1 || []).length + " / 池2 " + (j.pool2 || []).length
+    + " / 保护 " + (j.protected || []).length + " 个夹";
+}
+
+function renderLearn(r) {
+  const w = r.best_weights || {};
+  const agree = r.reclass_agree || 0, dis = r.reclass_disagree || 0;
+  const acc = Math.round((r.heldout_accuracy || 0) * 100);
+  $("#learn-result").style.display = "";
+  $("#learn-result").innerHTML = '<h3><i data-lucide="graduation-cap"></i>最近一次权重学习</h3>'
+    + '<div class="dbar"><span class="mut">留出集准确率</span><span class="tr"><i style="width:' + acc + '%"></i></span><span class="n">' + acc + '%</span></div>'
+    + '<div class="dbar"><span class="mut">全语料一致率</span><span class="tr"><i style="width:'
+    + Math.round(agree / Math.max(1, agree + dis) * 100) + '%"></i></span><span class="n">'
+    + Math.round(agree / Math.max(1, agree + dis) * 100) + '%</span></div>'
+    + '<p class="hint">学得权重：标题 ' + esc(w.title) + ' · 标签 ' + esc(w.tag) + ' · UP主 ' + esc(w.up)
+    + '（语料 ' + fmt(r.corpus) + ' 条，训练 ' + fmt(r.train) + ' / 留出 ' + fmt(r.test) + ' · ' + esc(r.at || "") + '）</p>'
+    + ((r.changed_examples || []).length
+      ? '<p class="hint" style="margin-top:var(--s2)">重分类不一致示例（回验发现）：</p><table><tbody>'
+        + r.changed_examples.slice(0, 8).map(x => '<tr><td class="tt"><b>' + esc(x.title) + '</b></td><td class="faint">手动: '
+          + esc(x.truth) + '</td><td class="faint">引擎: ' + esc(x.pred) + '</td></tr>').join("")
+        + '</tbody></table>' : "");
+  refreshIcons();
+}
+async function loadLearnReport() {
+  const j = await api("/api/learn/report");
+  if (j.weight_report) renderLearn(j.weight_report);
+  else if (j.hotword_keys) {
+    $("#learn-result").style.display = "";
+    $("#learn-result").innerHTML = '<p class="faint">热词表已学习：' + fmt(j.hotword_keys) + ' 个键；尚未做权重回验。</p>';
+  }
+}
+
+$("#btn-hotwords").addEventListener("click", async () => {
+  toast("学习池1热词表中…");
+  const j = await api("/api/learn/hotwords", {});
+  const s = j.summary;
+  toast("池1热词：" + fmt(s.keys) + " 个键（标题 " + fmt(s.by_field.b || 0) + " / 标签 " + fmt(s.by_field.g || 0) + " / UP " + fmt(s.by_field.u || 0) + "）");
+  loadLearnReport();
+});
+$("#btn-hotwords2").addEventListener("click", async () => {
+  toast("池2个人化特征学习中…");
+  const j = await api("/api/learn/hotwords2", {});
+  toast("池2特征键 " + fmt(j.summary.keys) + " 个（命中将归入「个人化」，原夹受保护不动）");
+  loadLearnReport();
+});
+$("#btn-weights").addEventListener("click", async () => {
+  toast("学权重 + 切分回验中…");
+  const j = await api("/api/learn/weights", {});
+  renderLearn(j.report);
+  toast("留出集准确率 " + Math.round((j.report.heldout_accuracy || 0) * 100) + "%");
+});
+$("#cp-sel5").addEventListener("click", () => {
+  $$(".pool-sel").forEach(s => {
+    const n = parseInt((s.closest(".btnrow").textContent.match(/([0-9,]+) 条/) || [0, "0"])[1].replace(/,/g, ""));
+    if (n >= 5) s.value = "1";
+  });
+});
+$("#cp-selall").addEventListener("click", () => $$(".pool-sel").forEach(s => s.value = "0"));
+$("#cp-save").addEventListener("click", async () => {
+  const pool1 = [], pool2 = [];
+  $$(".pool-sel").forEach(s => {
+    if (s.value === "1") pool1.push(s.dataset.title);
+    if (s.value === "2") pool2.push(s.dataset.title);
+  });
+  const j = await api("/api/corpus/set", {pool1: pool1, pool2: pool2});
+  toast("已保存：池1 " + j.pool1 + " 个，池2 " + j.pool2 + " 个"
+    + (j.newly_protected.length ? "；新保护夹：" + j.newly_protected.join("、") : ""));
+  loadCorpus();
+  loadOverview();
+});
+$("#btn-evalfetch").addEventListener("click", async () => {
+  const exclude = $("#eval-exclude").value.split(/[,，]/).map(s => s.trim()).filter(Boolean);
+  await api("/api/eval/fetch", {exclude: exclude});
+  toast("后台开始拉取其余收藏夹…");
+  clearTimeout(BG_POLL); BG_POLL = setTimeout(pollProgress, 1500);
+});
+$("#btn-evalrun").addEventListener("click", async () => {
+  toast("评估中…");
+  const j = await api("/api/eval/run", {});
+  renderEval(j.report);
+  loadOverview();
+  toast("覆盖率 " + Math.round((j.report.coverage || 0) * 100) + "%，细分夹一致率 " + Math.round((j.report.accuracy || 0) * 100) + "%");
+});
+$("#btn-tags").addEventListener("click", async () => {
+  const cap = parseInt($("#tags-cap").value) || 1000;
+  const mode = $("#tags-mode").value;
+  const workers = Math.max(1, Math.min(4, parseInt($("#tags-workers").value) || 2));
+  await api("/api/tags/fetch", {cap: cap, mode: mode, workers: workers});
+  toast("后台补拉 " + cap + " 条标签中（" + workers + " 线程）…");
+  clearTimeout(BG_POLL); BG_POLL = setTimeout(pollProgress, 1500);
+});
+$("#btn-ruleimport").addEventListener("click", async () => {
+  const j = await api("/api/rules/import", {});
+  toast("已回导 " + fmt(j.imported) + " 条热词");
+});
+
+/* ---------- 启动 ---------- */
 
 /* ---------- 页内分段切换（分类与规则 / 学习与评估） ---------- */
 $$(".seg[data-seg]").forEach(g => g.addEventListener("click", (e) => {
