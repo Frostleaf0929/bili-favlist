@@ -83,6 +83,15 @@ $$(".nav").forEach(b => b.addEventListener("click", () => {
   if (b.dataset.page === "dash") loadOverview();
   if (b.dataset.page === "items") loadItems(1);
   if (b.dataset.page === "review") loadReview();
+  if (b.dataset.page === "tax") { loadTaxData(); loadRulesData(); }
+}));
+
+/* ---------- 页内分段切换（分类与规则 / 学习与评估） ---------- */
+$$(".seg[data-seg]").forEach(g => g.addEventListener("click", (e) => {
+  const b = e.target.closest("button[data-val]");
+  if (!b) return;
+  $$('.seg[data-seg="' + g.dataset.seg + '"] button').forEach(x => x.classList.toggle("on", x === b));
+  $$('[data-segpanel="' + g.dataset.seg + '"]').forEach(p => p.classList.toggle("on", p.dataset.val === b.dataset.val));
 }));
 
 /* ---------- 强调色圆点（顶栏 + 设置页共用） ---------- */
@@ -337,6 +346,159 @@ $("#rev-sort").addEventListener("click", (e) => {
   $$("#rev-sort button").forEach(x => x.classList.toggle("on", x === b));
   REV.sort = b.dataset.s;
   loadReview();
+});
+
+/* ---------- 分类与规则（真数据：/api/taxonomy + /api/rules 四块 CRUD） ---------- */
+let TAX = null;
+const BLOCK_CN = {manual: "手写", initial: "初筛", ai: "AI", reinforced: "强化"};
+let RULES = null, RULE_FILTER = "all";
+
+async function loadTaxData() {
+  TAX = await api("/api/taxonomy");
+  const groups = TAX.groups || [], loose = TAX.loose || [];
+  const allLeaves = groups.reduce((n, g) => n + g.leaves.length, 0) + loose.length;
+  const bound = groups.reduce((n, g) => n + g.leaves.filter(l => l.effective_folder).length, 0)
+    + loose.filter(l => l.effective_folder).length;
+  $("#tax-sum").textContent = groups.length + " 个大分类夹 · " + allLeaves + " 个叶分类 · "
+    + bound + " 个已绑收藏夹 · " + (allLeaves - bound) + " 个未绑（写回时跳过）。点叶分类可编辑绑定与归组。";
+
+  $("#tax-groups").innerHTML = groups.map(g => {
+    const cnt = g.leaves.reduce((n, l) => n + l.count, 0);
+    return '<div class="card"><h3><i data-lucide="folder-tree"></i>' + esc(g.name)
+      + ' <span class="faint">' + g.leaves.length + ' 叶 · ' + fmt(cnt) + ' 条</span></h3>'
+      + '<div class="btnrow"><label class="faint">B站夹 <input class="inp num g-folder" data-group="' + esc(g.name) + '" value="' + esc(g.folder) + '" style="width:140px" placeholder="media_id"></label>'
+      + '<button class="btn ghost" data-act="gsave" data-group="' + esc(g.name) + '">存夹id</button>'
+      + '<button class="btn ghost" data-act="gdel" data-group="' + esc(g.name) + '">删除组</button></div>'
+      + '<div class="leaves">' + (g.leaves.map(leafChip).join("") || '<span class="faint">空组（还没有叶分类归进来）</span>') + '</div>'
+      + '<div class="leafedit" data-editgroup="' + esc(g.name) + '" style="margin-top:var(--s3)"></div></div>';
+  }).join("") || '<p class="faint">还没有大分类夹——在上方输入名字新建。</p>';
+  $("#tax-loose").innerHTML = loose.map(leafChip).join("") || '<span class="faint">无——所有叶分类都已归组。</span>';
+  refreshIcons();
+}
+function leafChip(l) {
+  return '<button class="leaf" data-leaf="' + esc(l.name) + '">' + esc(l.name) + '<b>' + fmt(l.count) + '</b></button>';
+}
+function openLeafEditor(leafName) {
+  let leaf = null, groupName = "";
+  (TAX.groups || []).forEach(g => (g.leaves || []).forEach(l => { if (l.name === leafName) { leaf = l; groupName = g.name; } }));
+  if (!leaf) (TAX.loose || []).forEach(l => { if (l.name === leafName) { leaf = l; } });
+  if (!leaf) return;
+  $$("#tax-groups .leafedit").forEach(x => x.innerHTML = "");
+  $("#tax-edit-loose").innerHTML = "";
+  const holder = groupName
+    ? [...$$("#tax-groups .leafedit")].find(x => x.dataset.editgroup === groupName)
+    : $("#tax-edit-loose");
+  const opts = ['<option value=""' + (groupName ? "" : " selected") + '>（不合并）</option>']
+    .concat((TAX.groups || []).map(g => '<option ' + (g.name === groupName ? "selected" : "") + ' value="' + esc(g.name) + '">' + esc(g.name) + '</option>')).join("");
+  holder.innerHTML = '<div class="btnrow"><b>' + esc(leafName) + '</b>'
+    + '<label class="faint">B站夹 <input class="inp num" data-field="folder" value="' + esc(leaf.folder) + '" placeholder="留空=用大分类夹的" style="width:150px"></label>'
+    + '<button class="btn ghost" data-act="lsave" data-leaf="' + esc(leafName) + '">存夹id</button>'
+    + '<label class="faint">合并到 <select class="inp" data-field="parent">' + opts + '</select></label>'
+    + '<button class="btn ghost" data-act="lparent" data-leaf="' + esc(leafName) + '">确定</button>'
+    + '<button class="btn ghost" data-act="eclose">收起</button></div>';
+}
+
+async function loadRulesData() {
+  await ensureCats();
+  $("#r-cat").innerHTML = (CATS || []).map(c => '<option value="' + esc(c) + '">' + esc(c) + '</option>').join("");
+  RULES = await api("/api/rules");
+  renderRules();
+}
+function renderRules() {
+  const blocks = RULES || {};
+  const total = Object.values(blocks).reduce((n, l) => n + (l || []).length, 0);
+  $("#rule-sum").textContent = "手写 " + (blocks.manual || []).length + " · 初筛 " + (blocks.initial || []).length
+    + " · AI " + (blocks.ai || []).length + " · 强化 " + (blocks.reinforced || []).length + "（共 " + fmt(total) + " 条）";
+  const rows = [];
+  Object.entries(blocks).forEach(([block, list]) => {
+    if (RULE_FILTER !== "all" && RULE_FILTER !== block) return;
+    (list || []).forEach(r => rows.push([block, r]));
+  });
+  $("#rulesbody").innerHTML = rows.length ? rows.map(ruleRow).join("")
+    : '<tr><td colspan="7" class="faint">该块暂无规则。</td></tr>';
+}
+function ruleRow(pair) {
+  const block = pair[0], r = pair[1];
+  const kws = (r.keywords || []).join("，");
+  const pn = (r.p !== undefined && r.p !== null)
+    ? ' <span class="faint">P=' + Math.round((r.p || 0) * 100) + '% · n=' + fmt(r.n) + '</span>' : "";
+  const mid = (r.mid !== undefined && r.mid !== null) ? " (mid=" + esc(r.mid) + ")" : "";
+  return '<tr>'
+    + '<td>' + (BLOCK_CN[block] || esc(block)) + '</td>'
+    + '<td>' + esc(r.field) + mid + '</td>'
+    + '<td class="faint" style="max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + esc(kws) + '">'
+    + esc(kws) + (r.regex ? ' / ' + esc(r.regex) + ' /' : "") + pn + '</td>'
+    + '<td>' + esc(r.category) + '</td>'
+    + '<td class="num">' + esc(r.weight) + '</td>'
+    + '<td><span class="badge ' + (r.enabled ? "st-auto" : "st-low") + '">' + (r.enabled ? "启用" : "停用") + '</span>'
+    + (r.strong ? ' <span class="badge st-review">强</span>' : "") + '</td>'
+    + '<td><button class="btn ghost" data-act="toggle" data-id="' + esc(r.id) + '" data-en="' + (r.enabled ? 0 : 1) + '">' + (r.enabled ? "停用" : "启用") + '</button> '
+    + '<button class="btn ghost" data-act="del" data-id="' + esc(r.id) + '">删除</button></td></tr>';
+}
+
+$("#btn-addgroup").addEventListener("click", async () => {
+  const name = $("#new-group").value.trim();
+  if (!name) { toast("填个大分类夹名"); return; }
+  await api("/api/taxonomy/group", {name: name});
+  $("#new-group").value = "";
+  toast("已创建大分类夹 " + name);
+  loadTaxData();
+});
+$("#rule-chips").addEventListener("click", (e) => {
+  const chip = e.target.closest(".chip[data-b]");
+  if (!chip) return;
+  $$("#rule-chips .chip").forEach(x => x.classList.toggle("on", x === chip));
+  RULE_FILTER = chip.dataset.b;
+  renderRules();
+});
+$("#btn-addrule").addEventListener("click", async () => {
+  const kws = $("#r-kw").value.split(/[,，]/).map(s => s.trim()).filter(Boolean);
+  if (!kws.length && !$("#r-regex").value.trim()) { toast("至少填关键词或正则"); return; }
+  const j = await api("/api/rules/add", {
+    block: $("#r-block").value, field: $("#r-field").value, keywords: kws,
+    regex: $("#r-regex").value.trim(), category: $("#r-cat").value,
+    weight: parseFloat($("#r-weight").value) || 1.0, strong: $("#r-strong").checked,
+  });
+  toast("规则已添加 " + j.rule.id);
+  $("#r-kw").value = ""; $("#r-regex").value = "";
+  loadRulesData();
+});
+$("#page-tax").addEventListener("click", async (e) => {
+  const chip = e.target.closest("button.leaf[data-leaf]");
+  if (chip) { openLeafEditor(chip.dataset.leaf); return; }
+  const b = e.target.closest("[data-act]");
+  if (!b) return;
+  const act = b.dataset.act;
+  if (act === "gsave") {
+    const inp = [...$$("#tax-groups .g-folder")].find(i => i.dataset.group === b.dataset.group);
+    await api("/api/taxonomy/folder", {kind: "group", name: b.dataset.group, folder: inp ? inp.value : ""});
+    toast("已保存大分类夹绑定 " + b.dataset.group);
+    loadTaxData();
+  } else if (act === "gdel") {
+    await api("/api/taxonomy/group_delete", {name: b.dataset.group});
+    toast("已删除组（叶分类保留）");
+    loadTaxData();
+  } else if (act === "lsave") {
+    const row = b.closest(".btnrow");
+    await api("/api/taxonomy/folder", {kind: "leaf", name: b.dataset.leaf, folder: row.querySelector('[data-field="folder"]').value});
+    toast("已保存叶分类绑定 " + b.dataset.leaf);
+    loadTaxData();
+  } else if (act === "lparent") {
+    const row = b.closest(".btnrow");
+    await api("/api/taxonomy/leaf_parent", {leaf: b.dataset.leaf, parent: row.querySelector('[data-field="parent"]').value});
+    toast(b.dataset.leaf + " 归组已更新");
+    loadTaxData();
+  } else if (act === "eclose") {
+    b.closest(".leafedit").innerHTML = "";
+    $("#tax-edit-loose").innerHTML = "";
+  } else if (act === "toggle") {
+    await api("/api/rules/toggle", {id: b.dataset.id, enabled: b.dataset.en === "1"});
+    loadRulesData();
+  } else if (act === "del") {
+    await api("/api/rules/delete", {id: b.dataset.id});
+    toast("规则已删除");
+    loadRulesData();
+  }
 });
 
 /* ---------- 启动 ---------- */

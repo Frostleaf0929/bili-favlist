@@ -137,7 +137,8 @@ radial-gradient(520px 400px at -6% 102%,color-mix(in srgb,var(--accent) 9%,trans
 #bfp .gate .gc{color:var(--text-3);font-size:var(--fs-xs);margin-top:2px}
 #bfp .gnum{font-size:var(--fs-xl);font-weight:600;font-variant-numeric:tabular-nums}
 #bfp .leaves{display:flex;flex-wrap:wrap;gap:7px;margin-top:var(--s2)}
-#bfp .leaf{font-size:var(--fs-xs);color:var(--text-2);border:1px solid var(--card-border);border-radius:var(--r-sm);padding:4px 9px}
+#bfp .leaf{font-size:var(--fs-xs);color:var(--text-2);border:1px solid var(--card-border);border-radius:var(--r-sm);padding:4px 9px;background:none;font-family:inherit;cursor:pointer}
+#bfp .leaf:hover{color:var(--text);border-color:color-mix(in srgb,var(--accent) 45%,var(--card-border))}
 #bfp .leaf b{color:var(--text);font-weight:500;font-variant-numeric:tabular-nums;margin-left:5px}
 #bfp .rev{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:var(--s3);align-items:center}
 #bfp .rev .why{display:flex;gap:6px;flex-wrap:wrap;margin-top:7px}

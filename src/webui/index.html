@@ -145,12 +145,53 @@ if(new URLSearchParams(location.search).get("legacy")==="1")location.replace("/l
         </div>
       </section>
 
-      <!-- ======== 分类与规则（占位，下一轮迁移） ======== -->
+      <!-- ======== 分类与规则（已接真数据） ======== -->
       <section class="page" id="page-tax">
-        <div class="card">
-          <h3><i data-lucide="folder-tree"></i>分类与规则 · 迁移中</h3>
-          <p class="hint" style="font-size:var(--fs-sm)">两级分类体系与四块规则（手写 / 初筛 / AI / 强化）的管理，下一轮接入新界面。</p>
-          <div class="btnrow mt"><a class="btn ghost" href="/legacy.html">去旧版界面管理分类与规则</a></div>
+        <div class="seg" data-seg="tax" style="margin-bottom:var(--s4)">
+          <button class="on" data-val="tree">分类体系</button><button data-val="rules">规则</button>
+        </div>
+        <div data-segpanel="tax" data-val="tree" class="on">
+          <div class="btnrow" style="margin-bottom:var(--s3)">
+            <span class="faint" id="tax-sum">读取中…</span>
+            <span style="flex:1"></span>
+            <input class="inp" id="new-group" placeholder="新大分类夹名" style="width:170px">
+            <button class="btn ghost" id="btn-addgroup">新建大分类夹</button>
+          </div>
+          <div class="grid g2" id="tax-groups"></div>
+          <div class="card mt"><h3><i data-lucide="scissors"></i>未归组叶分类</h3>
+            <div class="leaves" id="tax-loose"></div>
+            <div id="tax-edit-loose" style="margin-top:var(--s3)"></div>
+          </div>
+        </div>
+        <div data-segpanel="tax" data-val="rules">
+          <div class="toolrow" id="rule-chips">
+            <button class="chip on" data-b="all">全部</button>
+            <button class="chip st-auto" data-b="manual">手写</button>
+            <button class="chip st-hot" data-b="initial">初筛</button>
+            <button class="chip st-ai" data-b="ai">AI</button>
+            <button class="chip st-hot2" data-b="reinforced">强化</button>
+            <span style="flex:1"></span>
+            <span class="faint" id="rule-sum"></span>
+          </div>
+          <div class="card" style="padding:0 4px">
+            <table>
+              <thead><tr><th>块</th><th>字段</th><th>关键词 / 正则</th><th>分类</th><th>权重</th><th>状态</th><th style="width:160px">操作</th></tr></thead>
+              <tbody id="rulesbody"><tr><td colspan="7" class="faint">读取中…</td></tr></tbody>
+            </table>
+          </div>
+          <div class="card mt"><h3><i data-lucide="plus"></i>新增规则</h3>
+            <div class="btnrow" style="row-gap:var(--s3)">
+              <select class="inp" id="r-block" style="width:110px"><option value="manual">手写</option><option value="initial">初筛</option><option value="ai">AI</option><option value="reinforced">强化</option></select>
+              <select class="inp" id="r-field" style="width:100px"><option value="title">标题</option><option value="tag">标签</option><option value="up">UP主</option><option value="desc">简介</option></select>
+              <input class="inp" id="r-kw" placeholder="关键词，逗号分隔" style="width:240px">
+              <input class="inp" id="r-regex" placeholder="正则（可选）" style="width:150px">
+              <select class="inp" id="r-cat" style="width:150px"></select>
+              <label class="faint">权重 <input class="inp num" id="r-weight" value="1.0" style="width:60px"></label>
+              <label class="switch"><input type="checkbox" id="r-strong"><span class="knob"></span>强规则</label>
+              <button class="btn primary" id="btn-addrule">添加</button>
+            </div>
+            <p class="hint">强规则（如 UP 主精确匹配）可单独直接命中；普通关键词仍需多信号门槛（≥2 个关键词或 ≥2 个字段）。</p>
+          </div>
         </div>
       </section>
 
