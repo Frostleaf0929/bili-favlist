@@ -86,7 +86,48 @@ $$(".nav").forEach(b => b.addEventListener("click", () => {
   if (b.dataset.page === "tax") { loadTaxData(); loadRulesData(); }
   if (b.dataset.page === "learn") { loadEvalReport(); loadCorpus(); loadLearnReport(); pollProgress(); }
   if (b.dataset.page === "wb") loadGuard();
+  if (b.dataset.page === "settings") loadSettings();
 }));
+
+/* ---------- 设置（阈值 + AI 接口，真数据） ---------- */
+async function loadSettings() {
+  const s = await api("/api/settings");
+  $("#s-min-score").value = s.min_score;
+  $("#s-min-margin").value = s.min_margin;
+  $("#s-min-fields").value = s.min_fields;
+  $("#s-reinforce-p").value = s.reinforce_p;
+  $("#s-reinforce-min-n").value = s.reinforce_min_n;
+  $("#s-promote-cap").value = s.promote_cap;
+  $("#llm-url").value = (s.llm || {}).base_url || "";
+  $("#llm-model").value = (s.llm || {}).model || "";
+}
+$("#btn-savesettings").addEventListener("click", async () => {
+  await api("/api/settings", {
+    min_score: parseFloat($("#s-min-score").value) || 1.0,
+    min_margin: parseFloat($("#s-min-margin").value) || 0.3,
+    min_fields: parseInt($("#s-min-fields").value) || 2,
+    reinforce_p: parseFloat($("#s-reinforce-p").value) || 0.6,
+    reinforce_min_n: parseInt($("#s-reinforce-min-n").value) || 5,
+    promote_cap: parseInt($("#s-promote-cap").value) || 50,
+  });
+  toast("设置已保存");
+});
+$("#btn-savellm").addEventListener("click", async () => {
+  await api("/api/settings", {llm: {
+    base_url: $("#llm-url").value.trim(),
+    model: $("#llm-model").value.trim(),
+    api_key: $("#llm-key").value.trim(),
+  }});
+  toast("LLM 配置已保存（仅存本机 data/app_state.json）");
+});
+$("#btn-runllm").addEventListener("click", async () => {
+  toast("AI 分类中，请稍候…");
+  const j = await api("/api/ai/run_llm", {max_items: 300});
+  toast("AI 已分类 " + fmt(j.labeled) + " 条");
+  loadOverview();
+});
+
+/* ---------- 启动 ---------- */
 
 /* ---------- 写回（三闸门 + 限额 + 计划 + APPLY 弹窗；安全语义与旧版一致） ---------- */
 let GUARD = null, LAST_PLAN = null;
@@ -469,7 +510,6 @@ async function loadOverview() {
   qb.className = pct > 80 ? "warn" : "";
   $("#wb-quota-n").textContent = hr ? moved + "/" + perDay : "–";
   $("#wbn").textContent = hr ? moved + "/" + perDay : "–";
-  $("#wbhint").textContent = fmt(moved);
 
   const acc = ev && ev.accuracy != null ? Math.round(ev.accuracy * 100) : null;
   const accg = ev && ev.group_accuracy != null ? Math.round(ev.group_accuracy * 100) : null;

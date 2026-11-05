@@ -323,7 +323,7 @@ if(new URLSearchParams(location.search).get("legacy")==="1")location.replace("/l
         </div>
       </section>
 
-      <!-- ======== 设置与个性化（个性化四项本轮即真实生效） ======== -->
+      <!-- ======== 设置与个性化（已接真数据） ======== -->
       <section class="page" id="page-settings">
         <div class="grid g2">
           <div class="card"><h3><i data-lucide="palette"></i>个性化</h3>
@@ -344,11 +344,32 @@ if(new URLSearchParams(location.search).get("legacy")==="1")location.replace("/l
             </div>
             <label class="switch"><input type="checkbox" id="glassck" checked onchange="setGlass(this.checked)"><span class="knob"></span>毛玻璃材质（关闭 = 实底，防黑底/闪烁）</label>
           </div>
-          <div class="card">
-            <h3><i data-lucide="settings-2"></i>阈值与 AI 设置 · 迁移中</h3>
-            <p class="hint" style="font-size:var(--fs-sm)">判定阈值（最低分 / 分差 / 最少证据 / 强化门槛）与 AI 在线分类设置，下一轮接入新界面；此处的主题 / 强调色 / 毛玻璃 / 密度已即时生效并记住。</p>
-            <div class="btnrow mt"><a class="btn ghost" href="/legacy.html">去旧版界面改阈值与 AI 设置</a></div>
+          <div class="card"><h3><i data-lucide="settings-2"></i>判定阈值</h3>
+            <div class="btnrow" style="row-gap:var(--s3)">
+              <label class="faint">最低分 <input class="inp num" id="s-min-score" style="width:70px"></label>
+              <label class="faint">分差 <input class="inp num" id="s-min-margin" style="width:70px"></label>
+              <label class="faint">最少证据 <input class="inp num" id="s-min-fields" style="width:56px"></label>
+            </div>
+            <div class="btnrow" style="row-gap:var(--s3);margin-top:var(--s2)">
+              <label class="faint">强化 P≥ <input class="inp num" id="s-reinforce-p" style="width:70px"></label>
+              <label class="faint">样本 n≥ <input class="inp num" id="s-reinforce-min-n" style="width:56px"></label>
+              <label class="faint">每遍强化上限 <input class="inp num" id="s-promote-cap" style="width:56px"></label>
+            </div>
+            <div class="btnrow" style="margin-top:var(--s3)">
+              <button class="btn primary" id="btn-savesettings">保存设置</button>
+            </div>
+            <p class="hint">单一关键词不允许直接命中——最少证据数即此门槛；强化上限调大可让更多共现规则升级（第 8/9 遍都顶到了 50）。</p>
           </div>
+        </div>
+        <div class="card mt"><h3><i data-lucide="bot"></i>AI 在线分类（OpenAI 兼容，仅 https）</h3>
+          <div class="btnrow">
+            <input class="inp" id="llm-url" placeholder="https://api.example.com/v1" style="width:240px">
+            <input class="inp" id="llm-model" placeholder="模型名" style="width:130px">
+            <input class="inp" id="llm-key" placeholder="API Key（仅存本机）" type="password" style="width:170px">
+            <button class="btn ghost" id="btn-savellm">保存</button>
+            <button class="btn" id="btn-runllm">跑 AI 批量（最新 300 条）</button>
+          </div>
+          <p class="hint">没有云端接口？用「导出 AI 队列 → 会话分析 → 导入 AI 结果」的离线闭环（总览页「导出 AI 队列」）。接口地址强制 https 且禁止指向本机/内网。</p>
         </div>
       </section>
 
