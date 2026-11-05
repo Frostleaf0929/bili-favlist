@@ -1,0 +1,40 @@
+/* ============================================================
+   bili-favlist 设计令牌 · 唯一真源（规范：design/UI-SPEC.md §4）
+   深浅主题 / 强调色 / 毛玻璃 / 密度 全部由根节点 #bfp 的 data-* 属性切换：
+   data-theme="dark|light"  data-accent="bili|indigo|mint|wisteria|amber|rose"
+   data-glass="on|off"      data-density="cozy|compact"
+   JS 只改属性，不改样式。默认：深色 + 靛蓝（2026-11-02 用户确认）。
+   ============================================================ */
+#bfp{--font:-apple-system,"SF Pro Text","Segoe UI Variable","Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
+--fs-xs:12px;--fs-sm:13px;--fs-md:14px;--fs-lg:15px;--fs-xl:18px;--fs-2xl:22px;--fs-3xl:28px;
+--s1:4px;--s2:8px;--s3:12px;--s4:16px;--s5:24px;--s6:32px;
+--r-sm:8px;--r-md:12px;--r-lg:16px;--r-pill:999px;
+--dur:.28s;--ease:cubic-bezier(.22,.61,.36,1);
+--bg:#0f1116;--surface-glass:rgba(26,31,43,.55);--surface-solid:#1a1f2b;
+--card-border:rgba(255,255,255,.07);--card-shadow:0 8px 28px rgba(0,0,0,.28);
+--hover:rgba(255,255,255,.05);--text:#e9edf4;--text-2:#9aa4b8;--text-3:#667089;
+--ok:#34c77b;--warn:#d3a95e;--danger:#ef5b6e;
+--st-auto:#34c77b;--st-hot:#4f8cff;--st-hot2:#b18cf0;--st-ai:#3fc1c9;--st-human:#2fb8a6;--st-review:#d3a95e;--st-low:#8a93a6;--st-none:#ef5b6e;
+--accent:#23ade5; /* 基准值 = B站蓝（data-accent="bili" 时不加覆盖即用此值） */
+--glass-blur:18px;
+font-family:var(--font);font-size:var(--fs-md);color:var(--text);background:var(--bg);position:relative;min-height:100vh}
+
+/* 强调色六选（深色主题）；默认 = indigo，由 HTML 初始属性决定 */
+#bfp[data-accent="indigo"]{--accent:#7b7ff2}
+#bfp[data-accent="mint"]{--accent:#3ecfa5}
+#bfp[data-accent="wisteria"]{--accent:#b18cf0}
+#bfp[data-accent="amber"]{--accent:#e8a53e}
+#bfp[data-accent="rose"]{--accent:#ef7ba0}
+
+/* 浅色主题覆盖同名变量（深色 elevated 灰阶 ↔ 浅色纸面灰阶） */
+#bfp[data-theme="light"]{--bg:#f4f6f9;--surface-glass:rgba(255,255,255,.66);--surface-solid:#ffffff;
+--card-border:rgba(20,30,50,.08);--card-shadow:0 6px 22px rgba(20,30,50,.08);
+--hover:rgba(20,30,50,.045);--text:#1b2230;--text-2:#5a6474;--text-3:#98a1b0;
+--ok:#1f9d64;--warn:#b8893c;--danger:#d94a5c;
+--st-auto:#1f9d64;--st-hot:#2f6fd6;--st-hot2:#8a5cd8;--st-ai:#1e8f96;--st-human:#1f8a7a;--st-review:#8a6420;--st-low:#5f6875;--st-none:#c43a4c;
+--accent:#00a1d6}
+#bfp[data-accent="indigo"][data-theme="light"]{--accent:#5856d6}
+#bfp[data-accent="mint"][data-theme="light"]{--accent:#2aa87e}
+#bfp[data-accent="wisteria"][data-theme="light"]{--accent:#9a6ee8}
+#bfp[data-accent="amber"][data-theme="light"]{--accent:#c9862a}
+#bfp[data-accent="rose"][data-theme="light"]{--accent:#e05c86}

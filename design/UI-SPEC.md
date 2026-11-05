@@ -80,8 +80,8 @@
 /* 语义色（warn 沿用拾刻米黄，是既有审美决定） */
 --ok:#34c77b(浅#1f9d64); --warn:#d3a95e(浅#b8893c); --danger:#ef5b6e(浅#d94a5c);
 
-/* 强调色：data-accent 六选，强调色只用于可交互元素（HIG 规则） */
-bili #23ade5(浅#00a1d6) · indigo #7b7ff2 · mint #3ecfa5 · wisteria #b18cf0 · amber #e8a53e · rose #ef7ba0
+/* 强调色：data-accent 六选，强调色只用于可交互元素（HIG 规则）；默认 = indigo（2026-11-02 用户确认） */
+bili #23ade5(浅#00a1d6) · indigo #7b7ff2(浅#5856d6)〔默认〕 · mint #3ecfa5 · wisteria #b18cf0 · amber #e8a53e · rose #ef7ba0
 
 /* 状态色（分类结果徽章，8 态；浅色主题用加深变体保证对比） */
 auto #34c77b · hot #4f8cff · hot2 #b18cf0 · ai #3fc1c9 · human #2fb8a6 · review #d3a95e · low #8a93a6 · none #ef5b6e
@@ -143,8 +143,8 @@ auto #34c77b · hot #4f8cff · hot2 #b18cf0 · ai #3fc1c9 · human #2fb8a6 · re
 3. 旧页面保留一个 `?legacy=1` 入口一轮，平稳过渡。
 4. 每页迁移完跑一次演示模式冒烟（CI 已有）。
 
-## 10. 待用户反馈/决定
+## 10. 待用户反馈/决定（2026-11-02 已全部答复）
 
-1. 原型观感方向（整体一块 + 毛玻璃 + 单色阶梯）是否认可；
-2. IA 分组（6 导航 + 设置）是否认可；
-3. 默认主题（当前深色）与默认强调色（B站蓝）是否要换。
+1. ✅ 原型观感方向（整体一块 + 毛玻璃 + 单色阶梯）——**认可，按此继续**；
+2. ✅ IA 分组（6 导航 + 设置）——**认可**；
+3. ✅ 默认配色——**默认深色保留，默认强调色改为靛蓝 indigo**（六色切换与深/浅/跟随系统保留，B站蓝降级为可选项）。

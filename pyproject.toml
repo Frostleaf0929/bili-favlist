@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "bili-favlist"
-version = "0.1.0"
+version = "0.2.0"
 description = "B站收藏夹批量分类工具：导出 → 规则+AI 分类 → 两级归类 → 批量写回，含本地交互式工作台"
 readme = "README.md"
 requires-python = ">=3.10"
