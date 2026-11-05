@@ -310,8 +310,11 @@ function renderEval(r) {
   const acc = Math.round((r.accuracy || 0) * 100), accg = Math.round((r.group_accuracy || 0) * 100);
   const cov = Math.round((r.coverage || 0) * 100);
   $("#ev-acc").textContent = acc + "%"; $("#ev-accg").textContent = accg + "%"; $("#ev-cov").textContent = cov + "%";
+  const compat = r.accuracy_compat != null ? Math.round(r.accuracy_compat * 100) : null;
   $("#ev-cov-d").textContent = "真盲测口径 = 评估集中未参与热词学习的 " + fmt((r.out_corpus || {}).n || 0)
-    + " 条（协议 v2 修泄漏）" + (r.in_corpus && r.in_corpus.n ? "；另有语料内参考 " + fmt(r.in_corpus.n) + " 条 " + Math.round((r.in_corpus.accuracy || 0) * 100) + "%（含泄漏，不作数）" : "");
+    + " 条（协议 v2 修泄漏）"
+    + (compat != null ? "；兼容口径（含候选别名）" + compat + "%" : "")
+    + (r.in_corpus && r.in_corpus.n ? "；语料内参考 " + fmt(r.in_corpus.n) + " 条 " + Math.round((r.in_corpus.accuracy || 0) * 100) + "%（含泄漏，不作数）" : "");
   $("#ev-concl").innerHTML = (r.conclusion || []).map(c => "<li>" + esc(c) + "</li>").join("") || "<li>（无结论输出）</li>";
   const conf = (r.top_confusions || []).slice(0, 3);
   const max = conf.length ? conf[0][1] : 1;
@@ -332,6 +335,11 @@ function renderEval(r) {
       + f.covered + '</td><td class="num">' + f.correct + '</td><td class="num">'
       + (f.accuracy === null ? '<span class="faint">未覆盖</span>' : Math.round(f.accuracy * 100) + "%") + '</td></tr>').join("")
     + '</tbody></table>'
+    + ((r.alias_candidates || []).length
+      ? '<p class="hint" style="margin-top:var(--s3)">候选别名（语料外夹 ≈ 高占比预测夹，待确认）：</p><div class="leaves">'
+        + r.alias_candidates.map(c => '<span class="leaf">' + esc(c.folder) + ' ≈ ' + esc(c.target)
+          + '<b>' + Math.round(c.frac * 100) + '% · ' + fmt(c.n) + '条</b></span>').join("") + '</div>'
+      : "")
     + '<p class="hint" style="margin-top:var(--s3)">高频混淆对（标准答案 ⇒ 引擎判成）：</p><div class="leaves">'
     + (r.top_confusions || []).map(x => '<span class="leaf">' + esc(x[0]) + '<b>' + fmt(x[1]) + '</b></span>').join("")
     + '</div><p class="hint" style="margin-top:var(--s3)">组级混淆对：</p><div class="leaves">'

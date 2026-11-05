@@ -755,6 +755,48 @@ class Engine:
         acc = m_out["accuracy"]
         cov = m_out["coverage"]
         gacc = m_out["group_accuracy"]
+
+        # ---- D15.2 兼容真值图：从语料外夹的预测分布挖掘候选别名 ----
+        # 防自证：候选只来自「语料外」夹（其条目未参与热词学习）；评分手册同时
+        # 报严格口径与兼容口径，候选需人工/LLM 确认后才晋升为主口径。
+        by_truth: dict = {}
+        for r in out_corpus:
+            by_truth.setdefault(r["truth"], []).append(r)
+        alias_candidates: list = []
+        for f, rs in by_truth.items():
+            covered_rs = [r for r in rs if r["source"] != "none"]
+            if len(covered_rs) < 10:
+                continue
+            cnt: dict = {}
+            for r in covered_rs:
+                cnt[r["pred"]] = cnt.get(r["pred"], 0) + 1
+            top, topn = max(cnt.items(), key=lambda kv: kv[1])
+            frac = topn / len(covered_rs)
+            if frac >= 0.7 and top != f:
+                alias_candidates.append(
+                    {"folder": f, "target": top, "frac": round(frac, 3),
+                     "n": len(rs), "covered": len(covered_rs)}
+                )
+        alias_candidates.sort(key=lambda x: (-(x["n"] * x["frac"])))
+        alias_map = {c["folder"]: c["target"] for c in alias_candidates}
+
+        def _compat_ok(r) -> bool:
+            return r["pred"] == r["truth"] or alias_map.get(r["truth"]) == r["pred"]
+
+        out_cov = [r for r in out_corpus if r["source"] != "none"]
+        compat_correct = sum(1 for r in out_cov if _compat_ok(r))
+        acc_compat = round(compat_correct / len(out_cov), 3) if out_cov else 0
+        g_compat_ok = 0
+        for r in out_cov:
+            if _compat_ok(r):
+                g_compat_ok += 1
+                continue
+            t_eff = alias_map.get(r["truth"], r["truth"])
+            tg = title_group.get(t_eff)
+            pg = title_group.get(r["pred"])
+            if tg and tg == pg:
+                g_compat_ok += 1
+        gacc_compat = round(g_compat_ok / len(out_cov), 3) if out_cov else 0
         per: dict = {}
         confusions: dict = {}
         for r in obj:
@@ -800,6 +842,13 @@ class Engine:
             f"覆盖面：真盲测子集 {round(cov * 100)}%"
             + ("；其余主要是标题无信息量的长尾" if cov < 0.9 else "")
         )
+        if alias_candidates:
+            ex = alias_candidates[0]
+            concl.append(
+                f"兼容口径（把 {len(alias_candidates)} 个候选别名算对，如「{ex['folder']}」≈「{ex['target']}」）："
+                f"细分 {round(acc_compat * 100)}% / 组级 {round(gacc_compat * 100)}%"
+                "——候选待人工或 AI 确认，确认前不进主口径"
+            )
         if subj:
             concl.append(
                 f"个人化特征识别：{personal_hits}/{len(subj)} 条正确标为「个人化」"
@@ -837,6 +886,10 @@ class Engine:
             "coverage_full": m_full["coverage"],
             "in_corpus": {k: m_in[k] for k in ("n", "covered", "correct", "accuracy", "group_accuracy")},
             "out_corpus": {k: m_out[k] for k in ("n", "covered", "correct", "accuracy", "group_accuracy")},
+            # D15.2 兼容口径与候选别名
+            "accuracy_compat": acc_compat,
+            "group_accuracy_compat": gacc_compat,
+            "alias_candidates": alias_candidates,
             "corpus_folders_n": len(pool1),
             "subjective_excluded": len(auto_excluded),
             "subjective_total": len(subj),
@@ -851,6 +904,7 @@ class Engine:
         hist.append({
             "at": report["at"],
             "accuracy": report["accuracy"], "group_accuracy": report["group_accuracy"],
+            "accuracy_compat": report.get("accuracy_compat"),
             "coverage": report["coverage"], "n_out": m_out["n"], "n_in": m_in["n"],
             "accuracy_full": report["accuracy_full"],
         })
