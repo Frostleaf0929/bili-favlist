@@ -366,6 +366,9 @@ class Handler(BaseHTTPRequestHandler):
                 elif path == "/api/labels/audit":
                     mm = float(qs.get("min_margin") or 0.5)
                     self._json(eng.audit_labels(min_margin=mm))
+                elif path == "/api/review/queue":
+                    k = int(qs.get("k") or 50)
+                    self._json(eng.review_queue_smart(k=k))
                 elif path == "/api/taxonomy":
                     self._json(self._taxonomy_view(eng))
                 elif path == "/api/settings":

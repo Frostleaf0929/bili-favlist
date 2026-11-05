@@ -654,7 +654,7 @@ $("#bulkgo").addEventListener("click", async () => {
 });
 
 /* ---------- 复核队列（真数据：review 50 + low 30，确认/不要走 /api/label） ---------- */
-const REV = {sort: "margin", page: 1};
+const REV = {sort: "smart", page: 1};
 
 function reviewCard(it) {
   const sigs = (it.signals || []).map(s =>
@@ -683,15 +683,26 @@ async function loadReview(reset) {
   await ensureCats();
   if (reset !== false) {
     REV.page = 1;
-    const [jr, jl] = await Promise.all([
-      api("/api/items?status=review&sort=" + REV.sort + "&page_size=50&page=1"),
-      api("/api/items?status=low&sort=" + REV.sort + "&page_size=30&page=1"),
-    ]);
-    const rows = jr.items.concat(jl.items);
-    $("#rev-count").textContent = "待复核 " + fmt(jr.total) + " 条 · 未分类 " + fmt(jl.total) + " 条";
-    $("#reviewlist").innerHTML = rows.length ? rows.map(reviewCard).join("")
-      : '<p class="faint">队列空。跑一遍流水线或让 AI 分类后这里会有条目。</p>';
-    $("#rev-more").disabled = jr.total <= 50;
+    if (REV.sort === "smart") {
+      const j = await api("/api/review/queue?k=50");
+      const rows = j.items || [];
+      $("#rev-count").textContent = "智能批选 " + rows.length + " 条（池 " + fmt(j.n_pool) + "：复核 " + fmt(j.n_review) + " + 未分类 " + fmt(j.n_pool - j.n_review) + "）";
+      $("#reviewlist").innerHTML = rows.length ? rows.map(reviewCard).join("")
+        : '<p class="faint">队列空。跑一遍流水线或让 AI 分类后这里会有条目。</p>';
+      $("#rev-more").disabled = true;
+      $("#revinfo").textContent = "智能批选：不确定性 + 多样性（同批少重复，覆盖更多形态）。";
+    } else {
+      const [jr, jl] = await Promise.all([
+        api("/api/items?status=review&sort=" + REV.sort + "&page_size=50&page=1"),
+        api("/api/items?status=low&sort=" + REV.sort + "&page_size=30&page=1"),
+      ]);
+      const rows = jr.items.concat(jl.items);
+      $("#rev-count").textContent = "待复核 " + fmt(jr.total) + " 条 · 未分类 " + fmt(jl.total) + " 条";
+      $("#reviewlist").innerHTML = rows.length ? rows.map(reviewCard).join("")
+        : '<p class="faint">队列空。跑一遍流水线或让 AI 分类后这里会有条目。</p>';
+      $("#rev-more").disabled = jr.total <= 50;
+      $("#revinfo").textContent = "确认一条少一条；建议每天处理 ≤50 条。";
+    }
   }
   bindReview();
   refreshIcons();

@@ -956,6 +956,66 @@ class Engine:
         self.save()
         return report
 
+    @staticmethod
+    def _item_feats(it: dict) -> set:
+        """D3 相似度特征：标签集合 + 标题二元组。"""
+        feats = {t.strip().lower() for t in (it.get("tags") or "").split(",") if t.strip()}
+        title = re.sub(r"\s+", "", (it.get("title") or "").lower())
+        for i in range(len(title) - 1):
+            feats.add("b:" + title[i:i + 2])
+        return feats
+
+    def review_queue_smart(self, k: int = 50) -> dict:
+        """D3 智能批选：MMR 式「不确定性 + 多样性」采样。
+        纯 margin 排序会反复挑到相似条目（主动学习文献的标准结论）；
+        这里用 tag/标题二元组 Jaccard 做多样性惩罚，让每天的复核预算覆盖更多内容形态。"""
+        review = [
+            it for it in self.state.get("items") or []
+            if not it.get("dead") and it.get("status") == "review"
+        ]
+        low = [
+            it for it in self.state.get("items") or []
+            if not it.get("dead") and it.get("status") == "low"
+        ]
+        low.sort(key=lambda x: str(x.get("aid") or ""))
+        cands = review + low[:600]
+        if not cands:
+            return {"n_pool": 0, "n_review": len(review), "items": []}
+        self.prep_items(cands)
+        for it in cands:
+            if it.get("status") == "review":
+                it["_u"] = 1.0 / (1.0 + float(it.get("margin") or 0))
+            else:
+                it["_u"] = 0.9  # low = 引擎放弃的，天然高不确定
+            it["_feats"] = self._item_feats(it)
+        cands.sort(key=lambda x: -x["_u"])
+        lam = 0.6
+        selected: list = []
+        sel_feats: list = []
+        while cands and len(selected) < max(1, min(k, 200)):
+            best, best_score = None, -1e9
+            for it in cands:
+                max_sim = 0.0
+                for f in sel_feats:
+                    inter = len(it["_feats"] & f)
+                    union = len(it["_feats"] | f)
+                    if union:
+                        sim = inter / union
+                        if sim > max_sim:
+                            max_sim = sim
+                score = (1 - lam) * it["_u"] - lam * max_sim
+                if score > best_score:
+                    best, best_score = it, score
+            selected.append(best)
+            sel_feats.append(best["_feats"])
+            cands.remove(best)
+        for it in cands + selected:
+            it.pop("_u", None)
+            it.pop("_feats", None)
+        self.cleanup_items(cands)
+        self.cleanup_items(selected)
+        return {"n_pool": len(review) + len(low), "n_review": len(review), "items": selected}
+
     def audit_labels(self, min_margin: float = 0.5, limit: int = 200) -> dict:
         """D2 标签体检（Cleanlab 自置信思想的简化版）：找出「人工/AI 标注」与
         「引擎高置信预测」冲突的条目。只提示、不改写——冲突既可能是标注错误，
