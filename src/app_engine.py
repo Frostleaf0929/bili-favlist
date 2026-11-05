@@ -691,10 +691,29 @@ class Engine:
 
         live = [r for r in rows if not r["dead"]]
         pool2 = set(self.state.get("corpus2_folders") or [])
-        obj = [r for r in live if r["truth"] not in pool2]
+        pool1 = set(self.state.get("corpus_folders") or [])
+        # ---- 协议 v2 ----
+        # 1) 主观夹自动排除 = 手选池2 ∪ 名称规则判定（短无意义名/黑名单）。
+        #    注意：不用"一致率低"做判定——命名变体夹（语义对、名字不同）会被误杀，
+        #    那要等兼容真值图（D15.2）落地后才可作为依据。
+        folder_n: dict = {}
+        for r in live:
+            folder_n[r["truth"]] = folder_n.get(r["truth"], 0) + 1
+
+        def _name_junk(title: str) -> bool:
+            stripped = re.sub(r"[\s\u3000]+", "", title or "")
+            if len(stripped) <= 2 and not stripped.isalnum():
+                return True
+            return stripped in {"？", "。", "唉", "梦", "等待", "待处理", "过往未来", "追寻", "文字"}
+
+        auto_subjective = {t for t in folder_n if _name_junk(t)}
+        subjective = pool2 | auto_subjective
+        obj = [r for r in live if r["truth"] not in subjective]
         subj = [r for r in live if r["truth"] in pool2]
-        obj_covered = [r for r in obj if r["source"] != "none"]
-        obj_correct = [r for r in obj_covered if r["pred"] == r["truth"]]
+        auto_excluded = [r for r in live if r["truth"] in auto_subjective and r["truth"] not in pool2]
+        # 2) 泄漏切分：池1 语料夹的条目参与过热词学习（训练=考卷），不得计入主口径
+        out_corpus = [r for r in obj if r["truth"] not in pool1]   # 真盲测（主口径）
+        in_corpus = [r for r in obj if r["truth"] in pool1]        # 语料内（仅参考）
         personal_hits = sum(1 for r in subj if r["pred"] == self.PERSONAL_CATEGORY)
         # 组级口径：预测夹与标准夹同属一个大分类夹也算一致（细分粒度差异不扣分）
         title_group: dict = {}
@@ -705,18 +724,37 @@ class Engine:
             fid = self.effective_folder(leaf_name)
             if fid:
                 title_group[folder_titles.get(fid, "")] = parent
-        group_correct = 0
-        group_confusions: dict = {}
-        for r in obj_covered:
-            pg = title_group.get(r["pred"])
-            tg = title_group.get(r["truth"])
-            if r["pred"] == r["truth"]:
-                group_correct += 1
-            elif pg and pg == tg:
-                group_correct += 1
-            elif r["truth"]:
-                key = (tg or "（未归组）") + " ⇒ " + (pg or r["pred"])
-                group_confusions[key] = group_confusions.get(key, 0) + 1
+
+        def _metrics(subset: list) -> dict:
+            covered = [r for r in subset if r["source"] != "none"]
+            correct = [r for r in covered if r["pred"] == r["truth"]]
+            g_ok = 0
+            g_conf: dict = {}
+            for r in covered:
+                pg = title_group.get(r["pred"])
+                tg = title_group.get(r["truth"])
+                if r["pred"] == r["truth"] or (pg and pg == tg):
+                    g_ok += 1
+                elif r["truth"]:
+                    key = (tg or "（未归组）") + " ⇒ " + (pg or r["pred"])
+                    g_conf[key] = g_conf.get(key, 0) + 1
+            return {
+                "n": len(subset),
+                "covered": len(covered),
+                "correct": len(correct),
+                "coverage": round(len(covered) / len(subset), 3) if subset else 0,
+                "accuracy": round(len(correct) / len(covered), 3) if covered else 0,
+                "group_accuracy": round(g_ok / len(covered), 3) if covered else 0,
+                "group_correct": g_ok,
+                "_group_confusions": g_conf,
+            }
+
+        m_out = _metrics(out_corpus)   # 主口径
+        m_in = _metrics(in_corpus)     # 语料内参考（含学习泄漏）
+        m_full = _metrics(obj)         # 全量客观（规则排查用）
+        acc = m_out["accuracy"]
+        cov = m_out["coverage"]
+        gacc = m_out["group_accuracy"]
         per: dict = {}
         confusions: dict = {}
         for r in obj:
@@ -735,59 +773,89 @@ class Engine:
                 "correct": v["correct"],
                 "accuracy": round(v["correct"] / v["covered"], 3) if v["covered"] else None,
                 "subjective": k in pool2,
+                "in_corpus": k in pool1,
             }
             for k, v in sorted(per.items(), key=lambda kv: -kv[1]["n"])
         ]
         source_counts: dict = {}
         for r in live:
             source_counts[r["source"]] = source_counts.get(r["source"], 0) + 1
-        acc = len(obj_correct) / len(obj_covered) if obj_covered else 0
-        cov = len(obj_covered) / len(obj) if obj else 0
-        gacc = group_correct / len(obj_covered) if obj_covered else 0
         # 白话结论（可读性：直接给判断，不给裸数字）
         concl = []
-        if obj_covered:
+        if m_out["covered"]:
             concl.append(
-                f"客观内容夹上，算法每 5 条预测里有 {round(len(obj_correct)/len(obj_covered)*5, 1)} 条"
-                f"和你的手动分类一致（细分夹重合率 {round(acc*100)}%）"
+                f"真盲测口径（评估集中未参与热词学习的 {m_out['n']} 条）：每 5 条预测有 "
+                f"{round(m_out['correct'] / max(1, m_out['covered']) * 5, 1)} 条与你的手动分类一致"
+                f"（细分夹重合率 {round(acc * 100)}%）"
             )
-            if any(title_group.get(r["truth"]) for r in obj_covered):
-                concl.append(
-                    f"若按大分类夹口径考核（同组即算对），重合率为 {round(gacc*100)}%"
-                    "——细分粒度差异已在组内消化"
-                )
+            if any(title_group.get(r["truth"]) for r in out_corpus):
+                concl.append(f"真盲测组级口径（同组即算对）：{round(gacc * 100)}%")
+        else:
+            concl.append("真盲测子集为空：评估集里的夹全部参与过热词学习——把部分语料夹留出（不勾进池1）才能测出泛化能力。")
         concl.append(
-            f"算法敢下判断的覆盖面是客观夹的 {round(cov*100)}%"
+            f"语料内参考口径（学过的 {m_in['n']} 条）：{round(m_in['accuracy'] * 100)}%"
+            "——含学习泄漏，仅作对照，不代表泛化能力"
+        )
+        concl.append(
+            f"覆盖面：真盲测子集 {round(cov * 100)}%"
             + ("；其余主要是标题无信息量的长尾" if cov < 0.9 else "")
         )
-        if pool2:
+        if subj:
             concl.append(
-                f"{len(pool2)} 个情绪化/个人化夹不参与重合率考核（排除人为随意分组的干扰），"
-                f"只考核个人化特征识别：{personal_hits}/{len(subj)} 条被正确标为「个人化」"
-                f"（{round(personal_hits/len(subj)*100) if subj else 0}%）"
+                f"个人化特征识别：{personal_hits}/{len(subj)} 条正确标为「个人化」"
+                f"（{round(personal_hits / len(subj) * 100) if subj else 0}%）"
             )
+        concl.append(
+            f"主观/杂物夹自动排除 {len(subj) + len(auto_excluded)} 条"
+            f"（手选池2 {len(subj)} + 名称规则 {len(auto_excluded)}）"
+        )
+        if m_out["covered"] and m_out["n"] < 500:
+            n_cov, k = m_out["covered"], m_out["correct"]
+            z = 1.96
+            phat = k / n_cov
+            wilson = (phat + z * z / (2 * n_cov) + z * ((phat * (1 - phat) / n_cov + z * z / (4 * n_cov * n_cov)) ** 0.5)) / (1 + z * z / n_cov)
+            concl.append(f"注意：真盲测子集仅 {m_out['n']} 条，重合率 95% 置信上界约 {round(wilson * 100, 1)}%——把更多夹留出学习或建人工金标集才能收紧")
         top_conf = sorted(confusions.items(), key=lambda kv: -kv[1])[:3]
         if top_conf:
-            concl.append("主要分歧：" + "；".join(k for k, _ in top_conf) + "——多为细分粒度差异，归并大分类夹后可消除")
+            concl.append("主要分歧（全量客观口径，供规则排查）：" + "；".join(k for k, _ in top_conf))
         report = {
             "at": now_str(),
+            "protocol": "v2（主口径=语料外真盲测；主观夹名称规则自动排除；语料内单列仅供参考）",
             "mode": "blind（规则+热词，忽略夹来源与标注）",
             "total": len(live),
             "dead": len(rows) - len(live),
-            "covered": len(obj_covered),
-            "coverage": round(cov, 3),
-            "correct": len(obj_correct),
-            "accuracy": round(acc, 3),
-            "group_accuracy": round(gacc, 3),
-            "group_correct": group_correct,
-            "top_group_confusions": sorted(group_confusions.items(), key=lambda kv: -kv[1])[:15],
-            "by_source": source_counts,
+            # 主口径 = 语料外真盲测
+            "covered": m_out["covered"],
+            "coverage": m_out["coverage"],
+            "correct": m_out["correct"],
+            "accuracy": m_out["accuracy"],
+            "group_accuracy": m_out["group_accuracy"],
+            "group_correct": m_out["group_correct"],
+            # 参考口径
+            "accuracy_full": m_full["accuracy"],
+            "group_accuracy_full": m_full["group_accuracy"],
+            "coverage_full": m_full["coverage"],
+            "in_corpus": {k: m_in[k] for k in ("n", "covered", "correct", "accuracy", "group_accuracy")},
+            "out_corpus": {k: m_out[k] for k in ("n", "covered", "correct", "accuracy", "group_accuracy")},
+            "corpus_folders_n": len(pool1),
+            "subjective_excluded": len(auto_excluded),
             "subjective_total": len(subj),
             "personal_hits": personal_hits,
+            "top_group_confusions": sorted(m_full["_group_confusions"].items(), key=lambda kv: -kv[1])[:15],
+            "by_source": source_counts,
             "conclusion": concl,
             "per_folder": per_list,
             "top_confusions": sorted(confusions.items(), key=lambda kv: -kv[1])[:30],
         }
+        hist = self.state.setdefault("eval_history", [])
+        hist.append({
+            "at": report["at"],
+            "accuracy": report["accuracy"], "group_accuracy": report["group_accuracy"],
+            "coverage": report["coverage"], "n_out": m_out["n"], "n_in": m_in["n"],
+            "accuracy_full": report["accuracy_full"],
+        })
+        if len(hist) > 30:
+            del hist[:-30]
         self.state["eval_report"] = report
         self.save()
         return report

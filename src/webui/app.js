@@ -310,7 +310,8 @@ function renderEval(r) {
   const acc = Math.round((r.accuracy || 0) * 100), accg = Math.round((r.group_accuracy || 0) * 100);
   const cov = Math.round((r.coverage || 0) * 100);
   $("#ev-acc").textContent = acc + "%"; $("#ev-accg").textContent = accg + "%"; $("#ev-cov").textContent = cov + "%";
-  $("#ev-cov-d").textContent = "其余主要为无信息量长尾（" + fmt(r.total) + " 条人工分类条目）";
+  $("#ev-cov-d").textContent = "真盲测口径 = 评估集中未参与热词学习的 " + fmt((r.out_corpus || {}).n || 0)
+    + " 条（协议 v2 修泄漏）" + (r.in_corpus && r.in_corpus.n ? "；另有语料内参考 " + fmt(r.in_corpus.n) + " 条 " + Math.round((r.in_corpus.accuracy || 0) * 100) + "%（含泄漏，不作数）" : "");
   $("#ev-concl").innerHTML = (r.conclusion || []).map(c => "<li>" + esc(c) + "</li>").join("") || "<li>（无结论输出）</li>";
   const conf = (r.top_confusions || []).slice(0, 3);
   const max = conf.length ? conf[0][1] : 1;
@@ -320,12 +321,14 @@ function renderEval(r) {
     + Math.round(x[1] / max * 100) + '%;opacity:' + OPS[i] + '"></i></span><span class="n">' + fmt(x[1]) + '</span></div>').join("")
     : '<p class="faint">无。</p>';
   const bs = r.by_source || {};
-  $("#ev-meta").textContent = "盲测模式：忽略夹来源与标注，仅用规则+热词预测 · 预测来源：规则 " + fmt(bs.rule || 0)
-    + " / 热词 " + fmt(bs.hot || 0) + " / 个人化 " + fmt(bs.hot2 || 0) + " / 未预测 " + fmt(bs.none || 0)
-    + "（评估于 " + r.at + "）";
+  $("#ev-meta").textContent = "盲测模式：忽略夹来源与标注，仅用规则+热词预测 · 主口径=语料外真盲测（协议 v2）"
+    + " · 预测来源（全量客观）：规则 " + fmt(bs.rule || 0) + " / 热词 " + fmt(bs.hot || 0)
+    + " / 个人化 " + fmt(bs.hot2 || 0) + " / 未预测 " + fmt(bs.none || 0) + "（评估于 " + r.at + "）";
   $("#ev-detail").innerHTML =
-    '<table><thead><tr><th>收藏夹</th><th>条目</th><th>有预测</th><th>正确</th><th>一致率</th></tr></thead><tbody>'
-    + (r.per_folder || []).map(f => '<tr><td>' + esc(f.folder) + '</td><td class="num">' + f.n + '</td><td class="num">'
+    '<table><thead><tr><th>收藏夹</th><th>口径</th><th>条目</th><th>有预测</th><th>正确</th><th>一致率</th></tr></thead><tbody>'
+    + (r.per_folder || []).map(f => '<tr><td>' + esc(f.folder) + '</td><td>'
+      + (f.subjective ? '<span class="badge st-hot2">主观</span>' : f.in_corpus ? '<span class="badge st-hot">语料内</span>' : '<span class="badge st-auto">真盲测</span>')
+      + '</td><td class="num">' + f.n + '</td><td class="num">'
       + f.covered + '</td><td class="num">' + f.correct + '</td><td class="num">'
       + (f.accuracy === null ? '<span class="faint">未覆盖</span>' : Math.round(f.accuracy * 100) + "%") + '</td></tr>').join("")
     + '</tbody></table>'
