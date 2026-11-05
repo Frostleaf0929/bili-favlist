@@ -29,6 +29,7 @@ DEFAULT_SETTINGS = {
     "min_fields": 2,         # 至少命中几个不同信号字段（单关键词不自动命中）
     "reinforce_p": 0.6,      # 共现概率阈值
     "reinforce_min_n": 5,    # 强化所需最小样本数
+    "reinforce_min_lift": 2.0,  # 强化所需最小提升度（相对该分类基准占比），D4
     "promote_cap": 50,       # 每遍最多新强化规则数
     "llm": {"base_url": "", "api_key": "", "model": "", "batch_size": 30},
 }
@@ -466,20 +467,31 @@ class Engine:
         self.state["stats"] = stats
 
     def promote_reinforced_rules(self) -> list:
-        """共现概率达到阈值的 (关键词,分类) 升级为强化规则。"""
+        """D4：共现概率达到阈值、且相对基准分布有足够提升度（lift）的
+        (关键词,分类) 升级为强化规则。候选按 lift 排序择优，不再按键名字典序先到先得。"""
         st = self.state["settings"]
         p_th = float(st.get("reinforce_p", 0.6))
         n_th = int(st.get("reinforce_min_n", 5))
+        lift_th = float(st.get("reinforce_min_lift", 2.0))
         cap = int(st.get("promote_cap", 50))
-        promoted = []
         existing = set()
         for rules in self.state["rules"].values():
             for r in rules:
                 for kw in r.get("keywords") or []:
                     existing.add((r.get("field") or "title", str(kw).lower(), r.get("category")))
-        for key, bucket in sorted(self.state["stats"].items()):
-            if len(promoted) >= cap:
-                break
+        # 分类基准占比（全库已分类条目）
+        base: dict = {}
+        total_cls = 0
+        for it in self.state["items"]:
+            if it.get("dead"):
+                continue
+            c = it.get("category") or ""
+            if not c:
+                continue
+            base[c] = base.get(c, 0) + 1
+            total_cls += 1
+        candidates: list = []
+        for key, bucket in self.state["stats"].items():
             field, _, kw = key.partition(":")
             if not kw:
                 continue
@@ -492,6 +504,16 @@ class Engine:
                 continue
             if (field, kw, best_cat) in existing:
                 continue
+            base_n = base.get(best_cat, 0)
+            if total_cls <= 0 or base_n <= 0:
+                continue
+            lift = p / (base_n / total_cls)
+            if lift < lift_th:
+                continue
+            candidates.append((lift, best_n, p, field, kw, best_cat))
+        candidates.sort(key=lambda x: (-x[0], -x[1]))
+        promoted = []
+        for lift, best_n, p, field, kw, best_cat in candidates[:cap]:
             self.ensure_leaf(best_cat)
             rid = f"x{len(self.state['rules']['reinforced']) + 1}"
             self.state["rules"]["reinforced"].append(
@@ -505,11 +527,13 @@ class Engine:
                     "enabled": True,
                     "p": round(p, 3),
                     "n": best_n,
+                    "lift": round(lift, 2),
                 }
             )
             existing.add((field, kw, best_cat))
             promoted.append({"id": rid, "field": field, "keyword": kw,
-                             "category": best_cat, "p": round(p, 3), "n": best_n})
+                             "category": best_cat, "p": round(p, 3), "n": best_n,
+                             "lift": round(lift, 2)})
         return promoted
 
     # ---------- 流水线（可多遍）----------

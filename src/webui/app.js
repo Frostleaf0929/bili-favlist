@@ -97,6 +97,7 @@ async function loadSettings() {
   $("#s-min-fields").value = s.min_fields;
   $("#s-reinforce-p").value = s.reinforce_p;
   $("#s-reinforce-min-n").value = s.reinforce_min_n;
+  $("#s-reinforce-lift").value = s.reinforce_min_lift;
   $("#s-promote-cap").value = s.promote_cap;
   $("#llm-url").value = (s.llm || {}).base_url || "";
   $("#llm-model").value = (s.llm || {}).model || "";
@@ -108,6 +109,7 @@ $("#btn-savesettings").addEventListener("click", async () => {
     min_fields: parseInt($("#s-min-fields").value) || 2,
     reinforce_p: parseFloat($("#s-reinforce-p").value) || 0.6,
     reinforce_min_n: parseInt($("#s-reinforce-min-n").value) || 5,
+    reinforce_min_lift: parseFloat($("#s-reinforce-lift").value) || 2.0,
     promote_cap: parseInt($("#s-promote-cap").value) || 50,
   });
   toast("设置已保存");
@@ -813,7 +815,8 @@ function ruleRow(pair) {
   const block = pair[0], r = pair[1];
   const kws = (r.keywords || []).join("，");
   const pn = (r.p !== undefined && r.p !== null)
-    ? ' <span class="faint">P=' + Math.round((r.p || 0) * 100) + '% · n=' + fmt(r.n) + '</span>' : "";
+    ? ' <span class="faint">P=' + Math.round((r.p || 0) * 100) + '% · n=' + fmt(r.n)
+      + (r.lift != null ? ' · lift ' + esc(r.lift) : '') + '</span>' : "";
   const mid = (r.mid !== undefined && r.mid !== null) ? " (mid=" + esc(r.mid) + ")" : "";
   const st = RULE_STATS[r.id] || {};
   const precCell = st.fired
