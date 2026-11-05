@@ -129,19 +129,36 @@ if(new URLSearchParams(location.search).get("legacy")==="1")location.replace("/l
 
       <!-- ======== 复核队列（已接真数据） ======== -->
       <section class="page" id="page-review">
-        <div class="toolrow">
-          <span class="seg" id="rev-sort">
-            <button data-s="margin" class="on">最拿不准优先</button>
-            <button data-s="score">分数最高优先</button>
-            <button data-s="fav_time">收藏时间</button>
-          </span>
-          <span style="flex:1"></span>
-          <span class="faint" id="rev-count">–</span>
+        <div class="seg" data-seg="rev" style="margin-bottom:var(--s4)">
+          <button class="on" data-val="queue">复核队列</button><button data-val="audit">标注体检</button>
         </div>
-        <div id="reviewlist" style="display:grid;gap:var(--s3)"></div>
-        <div class="pgfoot">
-          <span id="revinfo">确认一条少一条；建议每天处理 ≤50 条。</span>
-          <span><button class="btn ghost" id="rev-more">加载更多</button></span>
+        <div data-segpanel="rev" data-val="queue" class="on">
+          <div class="toolrow">
+            <span class="seg" id="rev-sort">
+              <button data-s="margin" class="on">最拿不准优先</button>
+              <button data-s="score">分数最高优先</button>
+              <button data-s="fav_time">收藏时间</button>
+            </span>
+            <span style="flex:1"></span>
+            <span class="faint" id="rev-count">–</span>
+          </div>
+          <div id="reviewlist" style="display:grid;gap:var(--s3)"></div>
+          <div class="pgfoot">
+            <span id="revinfo">确认一条少一条；建议每天处理 ≤50 条。</span>
+            <span><button class="btn ghost" id="rev-more">加载更多</button></span>
+          </div>
+        </div>
+        <div data-segpanel="rev" data-val="audit">
+          <div class="card">
+            <h3><i data-lucide="stethoscope"></i>标注体检（D2）</h3>
+            <p class="hint" style="font-size:var(--fs-sm)">人工 / AI 标注与引擎<b>高置信</b>预测冲突的条目——可能是标注错误，也可能是引擎弱点。只提示、不改写，由你裁决。</p>
+            <div class="btnrow" style="margin-top:var(--s3)">
+              <label class="faint">最小分差 <input class="inp num" id="audit-margin" value="0.5" style="width:70px"></label>
+              <button class="btn primary" id="btn-audit">运行体检</button>
+              <span class="faint" id="audit-sum"></span>
+            </div>
+          </div>
+          <div id="auditlist" style="display:grid;gap:var(--s3);margin-top:var(--s3)"></div>
         </div>
       </section>
 

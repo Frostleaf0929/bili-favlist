@@ -932,6 +932,43 @@ class Engine:
         self.save()
         return report
 
+    def audit_labels(self, min_margin: float = 0.5, limit: int = 200) -> dict:
+        """D2 标签体检（Cleanlab 自置信思想的简化版）：找出「人工/AI 标注」与
+        「引擎高置信预测」冲突的条目。只提示、不改写——冲突既可能是标注错误，
+        也可能是引擎弱点，交由人工裁决。"""
+        flags: list = []
+        items = [
+            it for it in self.state.get("items") or []
+            if it.get("status") in ("human", "ai") and (it.get("category") or "")
+        ]
+        if not items:
+            return {"n_labeled": 0, "n_flagged": 0, "min_margin": min_margin, "flags": []}
+        self.prep_items(items)
+        for it in items:
+            res = self.score_item(it)
+            pred = res.get("category") or ""
+            if not pred or pred == it.get("category"):
+                continue
+            if float(res.get("margin") or 0) < min_margin:
+                continue
+            flags.append({
+                "aid": it.get("aid"),
+                "title": (it.get("title") or "")[:60],
+                "label": it.get("category"),
+                "by": it.get("status"),
+                "pred": pred,
+                "score": res.get("score"),
+                "margin": res.get("margin"),
+            })
+        self.cleanup_items(items)
+        flags.sort(key=lambda x: -float(x.get("margin") or 0))
+        return {
+            "n_labeled": len(items),
+            "n_flagged": len(flags),
+            "min_margin": min_margin,
+            "flags": flags[:limit],
+        }
+
     def rule_stats(self) -> dict:
         """D5 规则精度榜：每条规则在评估集上的命中数与贡献统计。
         口径优先取真盲测子集（语料外）；为空退化到全量客观。

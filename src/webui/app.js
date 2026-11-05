@@ -127,7 +127,6 @@ $("#btn-runllm").addEventListener("click", async () => {
   loadOverview();
 });
 
-/* ---------- 启动 ---------- */
 
 /* ---------- 写回（三闸门 + 限额 + 计划 + APPLY 弹窗；安全语义与旧版一致） ---------- */
 let GUARD = null, LAST_PLAN = null;
@@ -284,7 +283,6 @@ $("#applygo").addEventListener("click", async () => {
   loadGuard();
 });
 
-/* ---------- 启动 ---------- */
 
 /* ---------- 学习与评估（真数据：eval / corpus / learn 全链） ---------- */
 let BG_POLL = null;
@@ -477,7 +475,6 @@ $("#btn-ruleimport").addEventListener("click", async () => {
   toast("已回导 " + fmt(j.imported) + " 条热词");
 });
 
-/* ---------- 启动 ---------- */
 
 /* ---------- 页内分段切换（分类与规则 / 学习与评估） ---------- */
 $$(".seg[data-seg]").forEach(g => g.addEventListener("click", (e) => {
@@ -898,6 +895,42 @@ $("#page-tax").addEventListener("click", async (e) => {
     await api("/api/rules/delete", {id: b.dataset.id});
     toast("规则已删除");
     loadRulesData();
+  }
+});
+
+/* ---------- D2 标注体检 ---------- */
+$("#btn-audit").addEventListener("click", async () => {
+  const mm = parseFloat($("#audit-margin").value) || 0.5;
+  $("#btn-audit").disabled = true;
+  $("#audit-sum").textContent = "体检中…";
+  try {
+    const j = await api("/api/labels/audit?min_margin=" + mm);
+    $("#audit-sum").textContent = "已标注 " + fmt(j.n_labeled) + " 条，冲突 " + fmt(j.n_flagged) + " 条（分差 ≥ " + j.min_margin + "）";
+    $("#auditlist").innerHTML = (j.flags || []).length ? j.flags.map(f =>
+      '<div class="card rev" data-aid="' + esc(f.aid) + '">'
+      + '<div><b>' + esc(f.title) + '</b>'
+      + '<div class="why" style="margin-top:6px"><span class="badge st-' + esc(f.by) + '">标注: ' + esc(f.label) + '</span>'
+      + '<span class="faint">vs</span><span class="badge st-review">引擎: ' + esc(f.pred) + '</span>'
+      + '<span class="badge" style="--sc:var(--text-3)">分差 ' + esc(f.margin) + '</span></div></div>'
+      + '<div class="btnrow"><button class="btn" data-aact="fix" data-aid="' + esc(f.aid) + '" data-cat="' + esc(f.pred) + '">改成 ' + esc(f.pred) + '</button>'
+      + '<button class="btn ghost" data-aact="keep">保留标注</button></div></div>').join("")
+      : '<p class="faint">没有发现高置信冲突——标注与引擎方向基本一致。</p>';
+    refreshIcons();
+  } finally {
+    $("#btn-audit").disabled = false;
+  }
+});
+$("#auditlist").addEventListener("click", async (e) => {
+  const b = e.target.closest("[data-aact]");
+  if (!b) return;
+  const card = b.closest(".card.rev");
+  if (b.dataset.aact === "fix") {
+    await api("/api/label", {aid: b.dataset.aid, category: b.dataset.cat});
+    toast("已改标为「" + b.dataset.cat + "」");
+    card.remove();
+    loadOverview();
+  } else {
+    card.remove();
   }
 });
 
