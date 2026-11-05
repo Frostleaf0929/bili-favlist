@@ -1016,6 +1016,77 @@ class Engine:
         self.cleanup_items(selected)
         return {"n_pool": len(review) + len(low), "n_review": len(review), "items": selected}
 
+    def llm_exemplars(self) -> list:
+        """D6 检索增强的知识库：人工确认过的 (条目, 分类) 样本（labels 里 source=human
+        优先；不足时放宽到其他来源）。LLM 分类时按相似度取 k 条注入 prompt。"""
+        labels = self.state.get("labels") or {}
+        item_by_aid = {str(it.get("aid")): it for it in self.state["items"]}
+        human: list = []
+        other: list = []
+        for aid, lab in labels.items():
+            lab = lab or {}
+            cat = (lab.get("category") or "").strip()
+            it = item_by_aid.get(str(aid))
+            if not it or not cat:
+                continue
+            (human if lab.get("source") == "human" else other).append((it, cat))
+        return human or other
+
+    def low_clusters(self, min_sim: float = 0.3, max_clusters: int = 24,
+                     min_size: int = 4, pool_cap: int = 2500) -> dict:
+        """D8 长尾聚簇：把 low 状态条目按 tag/标题相似度贪心归簇，
+        供「LLM/规则提议新分类 → 人工批准」的体系生长循环。"""
+        pool = [
+            it for it in self.state["items"]
+            if not it.get("dead") and it.get("status") == "low"
+            and ((it.get("tags") or "").strip() or (it.get("title") or "").strip())
+        ]
+        pool.sort(key=lambda x: str(x.get("aid") or ""))
+        pool = pool[:pool_cap]
+        if not pool:
+            return {"n_low": 0, "clusters": []}
+        self.prep_items(pool)
+        clusters: list = []  # {"feats": set, "items": [it], "tags": Counter}
+        for it in pool:
+            f = self._item_feats(it)
+            if not f:
+                continue
+            best, best_sim = None, min_sim
+            for c in clusters:
+                union = len(f | c["feats"])
+                if not union:
+                    continue
+                sim = len(f & c["feats"]) / union
+                if sim >= best_sim:
+                    best, best_sim = c, sim
+            if best is None:
+                clusters.append({"feats": set(f), "items": [it], "tags": {}})
+                best = clusters[-1]
+            else:
+                best["feats"] |= f
+                best["items"].append(it)
+            for t in (it.get("tags") or "").split(","):
+                t = t.strip()
+                if t:
+                    best["tags"][t] = best["tags"].get(t, 0) + 1
+        self.cleanup_items(pool)
+        out = []
+        for c in clusters:
+            if len(c["items"]) < min_size:
+                continue
+            top_tags = sorted(c["tags"].items(), key=lambda kv: -kv[1])[:3]
+            out.append({
+                "size": len(c["items"]),
+                "name_suggest": " · ".join(t for t, _ in top_tags) or "未命名簇",
+                "top_tags": [t for t, _ in top_tags],
+                "sample_titles": [(it.get("title") or "")[:40] for it in c["items"][:3]],
+                "aids": [str(it.get("aid")) for it in c["items"]],
+            })
+            if len(out) >= max_clusters:
+                break
+        out.sort(key=lambda x: -x["size"])
+        return {"n_low": len(pool), "clusters": out}
+
     def audit_labels(self, min_margin: float = 0.5, limit: int = 200) -> dict:
         """D2 标签体检（Cleanlab 自置信思想的简化版）：找出「人工/AI 标注」与
         「引擎高置信预测」冲突的条目。只提示、不改写——冲突既可能是标注错误，

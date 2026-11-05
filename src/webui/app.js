@@ -948,6 +948,54 @@ $("#auditlist").addEventListener("click", async (e) => {
   }
 });
 
+/* ---------- D8 长尾攻坚 + D9 AI 校准 ---------- */
+$("#btn-clusters").addEventListener("click", async () => {
+  const ms = parseFloat($("#cl-minsim").value) || 0.3;
+  $("#btn-clusters").disabled = true;
+  $("#cl-sum").textContent = "聚簇中…";
+  try {
+    const j = await api("/api/low/clusters", {min_sim: ms});
+    $("#cl-sum").textContent = "low 存量 " + fmt(j.n_low) + " 条，聚出 " + (j.clusters || []).length + " 个簇（≥4 条）";
+    $("#clusterlist").innerHTML = (j.clusters || []).length ? j.clusters.map((c, idx) =>
+      '<div class="card rev"><div><b>' + esc(c.name_suggest) + '</b><span class="faint" style="margin-left:8px">' + fmt(c.size) + ' 条</span>'
+      + '<div class="why">' + (c.top_tags || []).map(t => '<span class="badge" style="--sc:var(--text-3)">' + esc(t) + '</span>').join("")
+      + '</div><div class="faint" style="margin-top:5px">例：' + c.sample_titles.map(esc).join(" ｜ ") + '</div></div>'
+      + '<div class="btnrow"><input class="inp" id="clname-' + idx + '" value="' + esc(c.name_suggest) + '" style="width:160px" placeholder="新分类名">'
+      + '<button class="btn primary" data-cl="' + idx + '">批准为叶分类</button></div>'
+      + '<div style="display:none" data-aids="' + esc(c.aids.join(",")) + '"></div></div>').join("")
+      : '<p class="faint">没有达到最小簇规模的聚簇（可调低相似度试试）。</p>';
+    refreshIcons();
+  } finally {
+    $("#btn-clusters").disabled = false;
+  }
+});
+$("#clusterlist").addEventListener("click", async (e) => {
+  const b = e.target.closest("[data-cl]");
+  if (!b) return;
+  const card = b.closest(".card.rev");
+  const name = card.querySelector("input").value.trim();
+  const aids = (card.querySelector("[data-aids]").dataset.aids || "").split(",").filter(Boolean);
+  if (!name) { toast("先填新分类名"); return; }
+  const j = await api("/api/low/apply", {name: name, aids: aids});
+  toast("已创建「" + j.leaf + "」并为 " + fmt(j.labeled) + " 条写入人工标注");
+  card.remove();
+  CATS = null;      // 分类清单变更，强制刷新
+  loadOverview();
+});
+$("#btn-calibrate").addEventListener("click", async () => {
+  $("#btn-calibrate").disabled = true;
+  $("#llm-reliability").textContent = "校准中…（约 150 条，需几分钟）";
+  try {
+    const j = await api("/api/llm/calibrate", {sample: 150});
+    const rep = j.report || {};
+    const top = (rep.reliability || []).slice(0, 5).map(x => x.category + " " + Math.round((x.precision || 0) * 100) + "%").join("；");
+    $("#llm-reliability").textContent = "校准完成（" + rep.at + "）：总体 " + Math.round((rep.accuracy || 0) * 100)
+      + "%（" + fmt(rep.answered) + "/" + fmt(rep.n) + " 条作答）。分类可靠性 TOP5：" + top;
+  } finally {
+    $("#btn-calibrate").disabled = false;
+  }
+});
+
 /* ---------- 启动 ---------- */
 applyPrefs();
 refreshIcons();

@@ -158,25 +158,40 @@ def _validate_external_url(url: str) -> str:
 
 
 def call_llm(base_url: str, api_key: str, model: str, batch_items: list, categories: list) -> dict:
-    """调用 OpenAI 兼容接口做批量分类，返回 {aid: category}。"""
+    """调用 OpenAI 兼容接口做批量分类（D6/D7 v2）。
+
+    返回 {aid: {"category": str, "confidence": float|None, "evidence": str}}；
+    模型若回退为旧版 {aid: 分类} 格式，confidence 记 None。
+    batch_items 中每条可带 "_shots"：[(示例标题, 示例分类), ...] 作为 few-shot。"""
     import requests
 
     url = _validate_external_url(base_url) + "/chat/completions"
-    payload_items = [
-        {
+    payload_items = []
+    for it in batch_items:
+        entry = {
             "aid": it["aid"],
             "title": it["title"],
             "up": it["up_name"],
             "tags": it["tags"],
             "desc": (it["desc"] or "")[:120],
         }
-        for it in batch_items
-    ]
+        shots = it.get("_shots") or []
+        if shots:
+            entry["相似人工示例"] = [{"标题": s[0][:40], "分类": s[1]} for s in shots]
+        payload_items.append(entry)
+    fewshot = ""
+    if any(it.get("_shots") for it in batch_items):
+        fewshot = ("注意：部分条目附有该用户已人工确认的相似示例（相似人工示例字段），"
+                   "与其风格一致时应优先对齐。\n")
     prompt = (
-        "你是视频收藏分类助手。把每个视频分到给定分类之一，无法判断填 未分类。\n"
+        "你是视频收藏分类助手。把每个视频分到给定分类之一（只能从分类列表中选择，"
+        "禁止发明新分类），确实无法判断填 未分类。\n"
         "参考信号优先级：标题 > UP主 ≈ 标签 > 简介。\n"
         "分类列表：" + "、".join(categories) + "\n"
-        "只输出 JSON：{\"<aid>\": \"<分类>\", ...}，不要解释。\n"
+        + fewshot +
+        "只输出 JSON 数组：[{\"aid\": \"<aid>\", \"category\": \"<分类>\", "
+        "\"confidence\": <0到1的小数>, \"evidence\": \"<一句话依据>\"}, ...]，不要解释。\n"
+        "confidence 标准：1.0=完全确定；0.7 左右=较有把握；0.5=两个分类间摇摆；<0.5=基本靠猜。\n"
         "数据：" + json.dumps(payload_items, ensure_ascii=False)
     )
     resp = requests.post(
@@ -187,14 +202,29 @@ def call_llm(base_url: str, api_key: str, model: str, batch_items: list, categor
             "messages": [{"role": "user", "content": prompt}],
             "temperature": 0,
         },
-        timeout=120,
+        timeout=180,
     )
     resp.raise_for_status()
     content = resp.json()["choices"][0]["message"]["content"].strip()
     if content.startswith("```"):
         content = content.strip("`").lstrip("json").strip()
     data = json.loads(content)
-    return {str(k): str(v) for k, v in data.items()}
+    out: dict = {}
+    if isinstance(data, list):
+        for row in data:
+            aid = str((row or {}).get("aid") or "")
+            if not aid:
+                continue
+            conf = (row or {}).get("confidence")
+            out[aid] = {
+                "category": str((row or {}).get("category") or ""),
+                "confidence": float(conf) if isinstance(conf, (int, float)) else None,
+                "evidence": str((row or {}).get("evidence") or "")[:100],
+            }
+    elif isinstance(data, dict):
+        for k, v in data.items():
+            out[str(k)] = {"category": str(v), "confidence": None, "evidence": ""}
+    return out
 
 
 # ---------- 业务逻辑 ----------
@@ -688,6 +718,27 @@ class Handler(BaseHTTPRequestHandler):
             self._json({"ok": True, "count": n})
         elif path == "/api/ai/run_llm":
             self._run_llm(eng, body)
+        elif path == "/api/llm/calibrate":
+            self._llm_calibrate(eng, body)
+        elif path == "/api/low/clusters":
+            self._json(eng.low_clusters(
+                min_sim=float(body.get("min_sim") or 0.3),
+                max_clusters=int(body.get("max_clusters") or 24),
+                min_size=int(body.get("min_size") or 4),
+            ))
+        elif path == "/api/low/apply":
+            name = str(body.get("name") or "").strip()
+            aids = [str(a) for a in (body.get("aids") or [])]
+            if not name:
+                raise ValueError("分类名不能为空")
+            if not aids:
+                raise ValueError("簇内没有条目")
+            eng.ensure_leaf(name)
+            for aid in aids:
+                eng.set_label(aid, name, source="human",
+                              note="长尾聚簇人工批准")
+            eng.save()
+            self._json({"ok": True, "leaf": name, "labeled": len(aids)})
         elif path == "/api/eval/fetch":
             if BG_PROGRESS["running"]:
                 raise ValueError("已有后台任务在跑，请等它结束")
@@ -858,7 +909,88 @@ class Handler(BaseHTTPRequestHandler):
         else:
             self._json({"error": "not found"}, 404)
 
+    def _llm_calibrate(self, eng, body: dict):
+        """D9：在评估集真盲测子集上测 LLM 分类可靠性 → 每分类可靠表 + 总体准确率。
+        结果存 settings.llm.reliability，供三级路由阈值定标。"""
+        settings = eng.state["settings"]
+        llm = settings.get("llm") or {}
+        base_url = str(body.get("base_url") or llm.get("base_url") or "")
+        api_key = str(body.get("api_key") or llm.get("api_key") or "")
+        model = str(body.get("model") or llm.get("model") or "")
+        if not (base_url and api_key and model):
+            raise ValueError("请先在设置里填 LLM 接口（https 地址 + key + 模型名）")
+        import random as _random
+        sample_n = max(20, min(500, int(body.get("sample") or 150)))
+        pool1 = set(eng.state.get("corpus_folders") or [])
+        pool2 = set(eng.state.get("corpus2_folders") or [])
+        pool = [
+            it for it in (eng.state.get("eval_items") or [])
+            if not it.get("dead") and (it.get("truth") or "") not in pool2
+            and (it.get("truth") or "") not in pool1
+        ]
+        if not pool:
+            raise ValueError("评估集真盲测子集为空，无法校准")
+        pool.sort(key=lambda x: str(x.get("aid") or ""))
+        _random.shuffle(pool)
+        pool = pool[:sample_n]
+        categories = [name for name in eng.state["taxonomy"]["leaves"]]
+        exemplars = eng.llm_exemplars()
+        ex_feats = [(it2, cat, eng._item_feats(it2)) for it2, cat in exemplars]
+        rows: list = []
+        batch_size = 25
+        for i in range(0, len(pool), batch_size):
+            batch = pool[i:i + batch_size]
+            for it in batch:
+                shots = []
+                if ex_feats:
+                    f = eng._item_feats(it)
+                    scored = []
+                    for it2, cat, ef in ex_feats:
+                        union = len(f | ef)
+                        if union:
+                            sim = len(f & ef) / union
+                            if sim > 0:
+                                scored.append((sim, it2, cat))
+                    scored.sort(key=lambda x: -x[0])
+                    shots = [(it2.get("title") or "", cat) for _, it2, cat in scored[:3]]
+                it["_shots"] = shots
+            result = call_llm(base_url, api_key, model, batch, categories)
+            for it in batch:
+                it.pop("_shots", None)
+                r = result.get(str(it["aid"])) or {}
+                rows.append({
+                    "aid": it.get("aid"), "truth": it.get("truth") or "",
+                    "pred": (r.get("category") or "").strip(),
+                    "confidence": r.get("confidence"),
+                })
+        n = len(rows)
+        answered = [r for r in rows if r["pred"] and r["pred"] != "未分类"]
+        correct = sum(1 for r in answered if r["pred"] == r["truth"])
+        per: dict = {}
+        for r in answered:
+            st = per.setdefault(r["pred"], {"n": 0, "ok": 0})
+            st["n"] += 1
+            if r["pred"] == r["truth"]:
+                st["ok"] += 1
+        reliability = [
+            {"category": c, "n": v["n"],
+             "precision": round(v["ok"] / v["n"], 3) if v["n"] else None}
+            for c, v in sorted(per.items(), key=lambda kv: -kv[1]["n"])
+        ]
+        report = {
+            "at": now_str(), "n": n, "answered": len(answered),
+            "accuracy": round(correct / len(answered), 3) if answered else 0,
+            "reliability": reliability,
+        }
+        settings.setdefault("llm", {})["reliability"] = report
+        eng.state["settings"] = settings
+        eng.save()
+        self._json({"ok": True, "report": report})
+
     def _run_llm(self, eng, body: dict):
+        """D6/D7：检索增强 + 结构化输出 + 三级路由的 AI 批量分类。
+        高置信（≥route_high）→ AI 定类；中置信 → 仅写建议分类进复核队列；
+        低置信 → 不动。"""
         settings = eng.state["settings"]
         llm = settings.get("llm") or {}
         base_url = str(body.get("base_url") or llm.get("base_url") or "")
@@ -868,20 +1000,58 @@ class Handler(BaseHTTPRequestHandler):
             raise ValueError("请先在设置里填 LLM 接口（https 地址 + key + 模型名）")
         batch_size = max(5, min(100, int(body.get("batch_size") or llm.get("batch_size") or 30)))
         max_items = max(1, min(2000, int(body.get("max_items") or 300)))
+        route_high = float(body.get("route_high") or llm.get("route_high") or 0.85)
+        route_low = float(body.get("route_low") or llm.get("route_low") or 0.5)
+        use_fewshot = bool(body.get("fewshot", llm.get("fewshot", True)))
         categories = [name for name in eng.state["taxonomy"]["leaves"]]
         pending = [it for it in eng.state["items"] if it.get("status") in ("low", "review")]
         pending = pending[:max_items]
+        # D6 检索增强知识库：人工确认样本（labels source=human）
+        exemplars = eng.llm_exemplars()
+        ex_feats = [(it2, cat, eng._item_feats(it2)) for it2, cat in exemplars] if use_fewshot else []
         labeled = 0
+        suggested = 0
+        skipped = 0
         for i in range(0, len(pending), batch_size):
             batch = pending[i:i + batch_size]
+            for it in batch:
+                shots = []
+                if ex_feats:
+                    f = eng._item_feats(it)
+                    scored = []
+                    for it2, cat, ef in ex_feats:
+                        union = len(f | ef)
+                        if union:
+                            sim = len(f & ef) / union
+                            if sim > 0:
+                                scored.append((sim, it2, cat))
+                    scored.sort(key=lambda x: -x[0])
+                    shots = [(it2.get("title") or "", cat) for _, it2, cat in scored[:3]]
+                it["_shots"] = shots
             result = call_llm(base_url, api_key, model, batch, categories)
             for it in batch:
-                cat = result.get(str(it["aid"]))
-                if cat:
-                    eng.set_label(str(it["aid"]), cat, source="ai", confidence="llm")
+                it.pop("_shots", None)
+                r = result.get(str(it["aid"])) or {}
+                cat = (r.get("category") or "").strip()
+                if not cat or cat == "未分类":
+                    skipped += 1
+                    continue
+                conf = r.get("confidence")
+                conf_v = float(conf) if isinstance(conf, (int, float)) else 1.0
+                if conf_v >= route_high:
+                    eng.set_label(str(it["aid"]), cat, source="ai",
+                                  confidence="llm:" + r.get("evidence", "")[:60])
                     labeled += 1
+                elif conf_v >= route_low:
+                    it["category"] = cat
+                    it["llm_evidence"] = (r.get("evidence") or "")[:80]
+                    suggested += 1
+                else:
+                    skipped += 1
         eng.save()
-        self._json({"ok": True, "labeled": labeled, "pending_before": len(pending)})
+        self._json({"ok": True, "labeled": labeled, "suggested": suggested,
+                    "skipped": skipped, "pending_before": len(pending),
+                    "exemplars": len(exemplars), "route": [route_low, route_high]})
 
     def _get(self):
         return self
