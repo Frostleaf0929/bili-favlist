@@ -85,7 +85,165 @@ $$(".nav").forEach(b => b.addEventListener("click", () => {
   if (b.dataset.page === "review") loadReview();
   if (b.dataset.page === "tax") { loadTaxData(); loadRulesData(); }
   if (b.dataset.page === "learn") { loadEvalReport(); loadCorpus(); loadLearnReport(); pollProgress(); }
+  if (b.dataset.page === "wb") loadGuard();
 }));
+
+/* ---------- 写回（三闸门 + 限额 + 计划 + APPLY 弹窗；安全语义与旧版一致） ---------- */
+let GUARD = null, LAST_PLAN = null;
+const GATE_CN = {locked: "锁定", soft: "软保护", free: "自由"};
+
+async function loadGuard() {
+  GUARD = await api("/api/guard");
+  /* 三闸门计数从 folders 现算（未登记的夹默认=自由，与旧版一致；
+     level_counts 只统计显式登记的夹，会漏掉默认自由的 79 个） */
+  const cnt = {locked: 0, soft: 0, free: 0};
+  (GUARD.folders || []).forEach(x => { cnt[x.guard] = (cnt[x.guard] || 0) + 1; });
+  $("#g-lock").textContent = fmt(cnt.locked || 0);
+  $("#g-soft").textContent = fmt(cnt.soft || 0);
+  $("#g-free").textContent = fmt(cnt.free || 0);
+  const mode = (GUARD.move_scope || {}).mode || "minimal";
+  $$("#scope-seg button").forEach(b => b.classList.toggle("on", b.dataset.m === mode));
+  $("#lim-run").value = (GUARD.write_limits || {}).per_run ?? 200;
+  $("#lim-day").value = (GUARD.write_limits || {}).per_day ?? 1000;
+  const h = GUARD.headroom || {};
+  const pct = h.per_day ? Math.min(100, (h.moved_today || 0) / h.per_day * 100) : 0;
+  $("#lim-bar").style.width = pct + "%";
+  $("#lim-bar").className = pct > 80 ? "warn" : "";
+  $("#lim-headroom-n").textContent = (h.moved_today || 0) + "/" + (h.per_day ?? "–");
+  $("#lim-headroom").textContent = "今日（" + (h.today || "-") + "）已移动 " + fmt(h.moved_today || 0)
+    + " 条，当日还剩 " + fmt(h.day_remaining || 0) + " 条；本次最多可动 "
+    + fmt(Math.min(h.run_remaining || 0, h.day_remaining || 0)) + " 条。";
+  renderGuardList();
+  renderScopeAllow();
+}
+function renderGuardList() {
+  if (!GUARD) return;
+  const f = $("#guard-filter").value, q = ($("#guard-q").value || "").trim().toLowerCase();
+  let list = (GUARD.folders || []).slice();
+  if (f) list = list.filter(x => x.guard === f);
+  if (q) list = list.filter(x => String(x.title || "").toLowerCase().includes(q));
+  $("#guard-list").innerHTML = !list.length ? '<p class="hint">没有匹配的收藏夹。</p>'
+    : '<table><thead><tr><th>收藏夹</th><th style="width:150px">级别</th><th style="text-align:right">条数</th></tr></thead><tbody>'
+      + list.slice(0, 300).map(x => '<tr><td>' + esc(x.title)
+        + (x.pool === 2 ? ' <span class="badge st-hot2">池2</span>' : x.pool === 1 ? ' <span class="badge st-hot">池1</span>' : "")
+        + '</td><td><select class="inp" data-fid="' + esc(x.folder_id) + '" style="width:130px">'
+        + '<option value="locked"' + (x.guard === "locked" ? " selected" : "") + '>🛡 锁定</option>'
+        + '<option value="soft"' + (x.guard === "soft" ? " selected" : "") + '>⚠️ 软保护</option>'
+        + '<option value="free"' + (x.guard === "free" ? " selected" : "") + '>○ 自由</option></select></td>'
+        + '<td class="num mut" style="text-align:right">' + fmt(x.items) + '</td></tr>').join("")
+      + '</tbody></table>' + (list.length > 300 ? '<p class="hint">仅显示前 300 个，请用搜索缩小范围。</p>' : "");
+}
+function currentScopeMode() {
+  const on = [...$$("#scope-seg button")].find(b => b.classList.contains("on"));
+  return on ? on.dataset.m : "minimal";
+}
+function renderScopeAllow() {
+  if (!GUARD) return;
+  const box = $("#scope-allow-box");
+  if (currentScopeMode() !== "minimal") {
+    box.innerHTML = '<p class="hint" style="margin:0">当前模式：除锁定夹外，任何夹都可以作为移动源，无需白名单。</p>';
+    return;
+  }
+  const allow = new Set((GUARD.move_scope || {}).allow_sources || []);
+  const list = (GUARD.folders || []).filter(x => x.items > 0 && x.guard !== "locked");
+  box.innerHTML = '<p class="hint" style="margin:0 0 var(--s2)">白名单（允许作为「移动源」，视频会从这些夹被搬出去）：</p><div class="leaves">'
+    + (list.length ? list.slice(0, 120).map(x =>
+        '<button class="chip scope-cb' + (allow.has(x.folder_id) ? " on" : "") + '" data-fid="' + esc(x.folder_id) + '">'
+        + (allow.has(x.folder_id) ? "✓ " : "") + esc(x.title) + ' ' + fmt(x.items) + '</button>').join("")
+      : '<span class="faint">没有可选的夹。</span>')
+    + '</div>' + (list.length > 120 ? '<p class="hint">仅显示前 120 个。</p>' : "");
+}
+
+function renderPlan(j) {
+  LAST_PLAN = j;
+  const lim = j.limits || {};
+  $("#wb-summary").innerHTML = '<p style="margin:0 0 var(--s2)">计划移动 <b class="num">' + fmt(j.total)
+    + '</b> 条，' + j.groups.length + ' 组，跳过 ' + fmt(j.skipped) + ' 条。</p>'
+    + '<p class="hint">限额：单次 ' + (lim.per_run ?? "-") + ' 条，当日 ' + (lim.per_day ?? "-")
+    + ' 条，今日已用 ' + fmt(lim.moved_today ?? 0) + ' → 本次上限 ' + (lim.cap_used ?? "-") + ' 条。</p>'
+    + ((j.soft_needs_confirm || []).length
+      ? '<p class="hint" style="color:var(--warn)">⚠️ 涉及软保护收藏夹：' + j.soft_needs_confirm.map(esc).join("、") + '，执行时需 CONFIRM-SOFT。</p>' : "")
+    + '<table><tbody>' + (j.groups || []).map(g => '<tr><td>' + esc(g.src) + ' <span class="faint">⇒</span> <b>'
+      + esc(g.tar) + '</b><span class="faint">（' + esc(g.category) + '）</span>'
+      + (g.soft ? ' <span class="badge st-review">软保护</span>' : "")
+      + '</td><td class="num mut" style="text-align:right">' + fmt(g.count) + ' 条</td></tr>').join("")
+    + '</tbody></table>'
+    + '<p class="hint">计划已存 data/app_plan.json；执行前请到 B 站网页端抽查 1–2 条目标夹。</p>';
+}
+
+$("#guard-filter").addEventListener("change", renderGuardList);
+$("#guard-q").addEventListener("input", renderGuardList);
+$("#guard-list").addEventListener("change", async (e) => {
+  const sel = e.target.closest("select[data-fid]");
+  if (!sel) return;
+  await api("/api/guard/set", {folder_id: sel.dataset.fid, level: sel.value});
+  toast("已设为：" + GATE_CN[sel.value]);
+  loadGuard();
+});
+$("#scope-seg").addEventListener("click", (e) => {
+  const b = e.target.closest("button[data-m]");
+  if (!b) return;
+  $$("#scope-seg button").forEach(x => x.classList.toggle("on", x === b));
+  renderScopeAllow();
+});
+$("#scope-allow-box").addEventListener("click", (e) => {
+  const chip = e.target.closest(".scope-cb");
+  if (!chip) return;
+  chip.classList.toggle("on");
+  chip.textContent = (chip.classList.contains("on") ? "✓ " : "") + chip.textContent.replace(/^✓\s*/, "");
+});
+$("#btn-savescope").addEventListener("click", async () => {
+  const allow = $$("#scope-allow-box .scope-cb.on").map(c => c.dataset.fid);
+  await api("/api/scope/set", {mode: currentScopeMode(), allow_sources: allow});
+  toast("移动范围已保存");
+  loadGuard();
+});
+$("#btn-savelimits").addEventListener("click", async () => {
+  await api("/api/limits/set", {
+    per_run: parseInt($("#lim-run").value) || 200,
+    per_day: parseInt($("#lim-day").value) || 1000,
+  });
+  toast("限额已保存");
+  loadGuard();
+});
+$("#wb-status-chips").addEventListener("click", (e) => {
+  const chip = e.target.closest(".chip[data-s]");
+  if (!chip) return;
+  chip.classList.toggle("on");
+});
+$("#btn-wbplan").addEventListener("click", async () => {
+  const statuses = $$("#wb-status-chips .chip.on").map(c => c.dataset.s);
+  if (!statuses.length) { toast("至少勾选一个状态"); return; }
+  toast("生成计划中…");
+  const j = await api("/api/writeback/plan", {statuses: statuses});
+  renderPlan(j);
+});
+$("#btn-apply").addEventListener("click", () => {
+  if (!LAST_PLAN || !(LAST_PLAN.groups || []).length) { toast("请先「生成计划（预览）」"); return; }
+  $("#dlg-total").textContent = fmt(LAST_PLAN.total);
+  $("#dlg-groups").innerHTML = LAST_PLAN.groups.map(g =>
+    '<div><span>' + esc(g.src) + ' ⇒ ' + esc(g.tar) + (g.soft ? "（软保护）" : "") + '</span><b class="num">' + fmt(g.count) + ' 条</b></div>').join("");
+  $("#dlg-softrow").style.display = (LAST_PLAN.soft_needs_confirm || []).length ? "" : "none";
+  $("#applyin").value = ""; $("#softin").value = ""; $("#applygo").disabled = true;
+  $("#dlg").showModal();
+  refreshIcons();
+});
+$("#applyin").addEventListener("input", (e) => { $("#applygo").disabled = e.target.value !== "APPLY"; });
+$("#dlgclose").addEventListener("click", () => $("#dlg").close());
+$("#dlgcancel").addEventListener("click", () => $("#dlg").close());
+$("#applygo").addEventListener("click", async () => {
+  const body = {confirm: "APPLY"};
+  const cs = $("#softin").value.trim();
+  if (cs) body.confirm_soft = cs;
+  const j = await api("/api/writeback/apply", body);
+  $("#dlg").close();
+  LAST_PLAN = null;
+  $("#wb-result").textContent = "✅ 已移动 " + fmt(j.moved) + " 条，报告：" + j.report;
+  toast("已移动 " + fmt(j.moved) + " 条");
+  loadGuard();
+});
+
+/* ---------- 启动 ---------- */
 
 /* ---------- 学习与评估（真数据：eval / corpus / learn 全链） ---------- */
 let BG_POLL = null;
