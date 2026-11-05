@@ -127,12 +127,21 @@ if(new URLSearchParams(location.search).get("legacy")==="1")location.replace("/l
         </div>
       </section>
 
-      <!-- ======== 复核队列（占位，下一轮迁移） ======== -->
+      <!-- ======== 复核队列（已接真数据） ======== -->
       <section class="page" id="page-review">
-        <div class="card">
-          <h3><i data-lucide="inbox"></i>复核队列 · 迁移中</h3>
-          <p class="hint" style="font-size:var(--fs-sm)">改判与低置信条目的逐条确认功能，下一轮接入新界面；当前待复核 <b class="num" id="revhint">–</b> 条。</p>
-          <div class="btnrow mt"><a class="btn ghost" href="/legacy.html">去旧版界面处理复核</a></div>
+        <div class="toolrow">
+          <span class="seg" id="rev-sort">
+            <button data-s="margin" class="on">最拿不准优先</button>
+            <button data-s="score">分数最高优先</button>
+            <button data-s="fav_time">收藏时间</button>
+          </span>
+          <span style="flex:1"></span>
+          <span class="faint" id="rev-count">–</span>
+        </div>
+        <div id="reviewlist" style="display:grid;gap:var(--s3)"></div>
+        <div class="pgfoot">
+          <span id="revinfo">确认一条少一条；建议每天处理 ≤50 条。</span>
+          <span><button class="btn ghost" id="rev-more">加载更多</button></span>
         </div>
       </section>
 

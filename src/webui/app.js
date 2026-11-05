@@ -82,6 +82,7 @@ $$(".nav").forEach(b => b.addEventListener("click", () => {
   $("#psub").textContent = T[b.dataset.page][1];
   if (b.dataset.page === "dash") loadOverview();
   if (b.dataset.page === "items") loadItems(1);
+  if (b.dataset.page === "review") loadReview();
 }));
 
 /* ---------- 强调色圆点（顶栏 + 设置页共用） ---------- */
@@ -114,7 +115,6 @@ async function loadOverview() {
   const revN = c.review || 0;
   $("#navrev").textContent = revN;
   $("#navrev").style.display = revN > 0 ? "" : "none";
-  $("#revhint").textContent = fmt(revN);
 
   $("#pass-meta").textContent = pass
     ? "最近一遍：第 " + pass.no + " 遍 · " + pass.at + " · 改判 " + fmt(pass.changed_total) + " 条 · 新强化规则 " + fmt(promCount(pass.promoted)) + " 条"
@@ -251,6 +251,92 @@ $("#bulkgo").addEventListener("click", async () => {
   $("#ckall").checked = false;
   await loadItems(IF.page);
   loadOverview();
+});
+
+/* ---------- 复核队列（真数据：review 50 + low 30，确认/不要走 /api/label） ---------- */
+const REV = {sort: "margin", page: 1};
+
+function reviewCard(it) {
+  const sigs = (it.signals || []).map(s =>
+    '<span class="badge" style="--sc:var(--text-3)">' + esc(s) + '</span>').join("");
+  const tags = (it.tags || "").split(",").filter(Boolean).slice(0, 6).map(t =>
+    '<span class="badge" style="--sc:var(--text-3)">' + esc(t) + '</span>').join("");
+  const suggest = it.category
+    ? '<span class="badge st-review">建议 ' + esc(it.category) + '</span>'
+    : '<span class="badge st-low">低置信 · 分差 ' + Number(it.margin || 0).toFixed(2) + '</span>';
+  const meta = esc(it.up_name || "") + " · " + esc(it.fav_time || "") + " · 分数 " + Number(it.score || 0).toFixed(2)
+    + ' · <span class="badge st-' + esc(it.status) + '">' + (STATUS_CN[it.status] || esc(it.status)) + '</span>';
+  const opts = ['<option value="">未分类</option>'].concat(
+    CATS.map(c => '<option ' + (c === it.category ? "selected" : "") + ' value="' + esc(c) + '">' + esc(c) + '</option>')).join("");
+  return '<div class="card rev" data-aid="' + esc(it.aid) + '">'
+    + '<div><b>' + esc(it.title) + (it.dead ? "（失效）" : "") + '</b>'
+    + '<div class="faint" style="margin-top:3px">' + meta + '</div>'
+    + '<div class="why">' + suggest + sigs + tags + '</div>'
+    + ((it.desc || "") ? '<p class="faint" style="margin:7px 0 0">' + esc(String(it.desc).slice(0, 80)) + '</p>' : "")
+    + '</div>'
+    + '<div class="btnrow"><select class="inp assign" style="width:160px">' + opts + '</select>'
+    + '<button class="btn primary" data-act="save"><i data-lucide="check"></i>确认</button>'
+    + '<button class="btn ghost" data-act="none">不要</button></div></div>';
+}
+
+async function loadReview(reset) {
+  await ensureCats();
+  if (reset !== false) {
+    REV.page = 1;
+    const [jr, jl] = await Promise.all([
+      api("/api/items?status=review&sort=" + REV.sort + "&page_size=50&page=1"),
+      api("/api/items?status=low&sort=" + REV.sort + "&page_size=30&page=1"),
+    ]);
+    const rows = jr.items.concat(jl.items);
+    $("#rev-count").textContent = "待复核 " + fmt(jr.total) + " 条 · 未分类 " + fmt(jl.total) + " 条";
+    $("#reviewlist").innerHTML = rows.length ? rows.map(reviewCard).join("")
+      : '<p class="faint">队列空。跑一遍流水线或让 AI 分类后这里会有条目。</p>';
+    $("#rev-more").disabled = jr.total <= 50;
+  }
+  bindReview();
+  refreshIcons();
+}
+
+function bindReview() {
+  $$("#reviewlist .rev").forEach(card => {
+    if (card.dataset.bound) return;
+    card.dataset.bound = "1";
+    const aid = card.dataset.aid;
+    card.querySelector('[data-act="save"]').addEventListener("click", async () => {
+      const cat = card.querySelector("select.assign").value;
+      await api("/api/label", {aid: aid, category: cat});
+      toast("已确认 → " + (cat || "未分类"));
+      card.remove();
+      loadOverview();
+    });
+    card.querySelector('[data-act="none"]').addEventListener("click", async () => {
+      await api("/api/label", {aid: aid, category: "未分类"});
+      toast("已标为不要（排除）");
+      card.remove();
+      loadOverview();
+    });
+  });
+}
+
+$("#rev-more").addEventListener("click", async () => {
+  REV.page += 1;
+  const j = await api("/api/items?status=review&sort=" + REV.sort + "&page_size=50&page=" + REV.page);
+  if (!(j.items || []).length) {
+    REV.page -= 1;
+    $("#rev-more").disabled = true;
+    toast("没有更多了");
+    return;
+  }
+  $("#reviewlist").insertAdjacentHTML("beforeend", j.items.map(reviewCard).join(""));
+  bindReview();
+  refreshIcons();
+});
+$("#rev-sort").addEventListener("click", (e) => {
+  const b = e.target.closest("button[data-s]");
+  if (!b) return;
+  $$("#rev-sort button").forEach(x => x.classList.toggle("on", x === b));
+  REV.sort = b.dataset.s;
+  loadReview();
 });
 
 /* ---------- 启动 ---------- */
