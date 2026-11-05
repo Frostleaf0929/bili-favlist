@@ -361,6 +361,8 @@ class Handler(BaseHTTPRequestHandler):
                     self._json(self._list_items(eng, qs))
                 elif path == "/api/rules":
                     self._json(eng.state["rules"])
+                elif path == "/api/rules/stats":
+                    self._json(eng.rule_stats())
                 elif path == "/api/taxonomy":
                     self._json(self._taxonomy_view(eng))
                 elif path == "/api/settings":
@@ -368,7 +370,9 @@ class Handler(BaseHTTPRequestHandler):
                 elif path == "/api/passes":
                     self._json(eng.state["passes"])
                 elif path == "/api/eval/report":
-                    self._json(eng.state.get("eval_report") or {})
+                    rep = dict(eng.state.get("eval_report") or {})
+                    rep["history"] = (eng.state.get("eval_history") or [])[-15:]
+                    self._json(rep)
                 elif path == "/api/corpus":
                     counts: dict = {}
                     id_by_title: dict = {}

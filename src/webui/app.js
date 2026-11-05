@@ -344,7 +344,24 @@ function renderEval(r) {
     + (r.top_confusions || []).map(x => '<span class="leaf">' + esc(x[0]) + '<b>' + fmt(x[1]) + '</b></span>').join("")
     + '</div><p class="hint" style="margin-top:var(--s3)">组级混淆对：</p><div class="leaves">'
     + (r.top_group_confusions || []).map(x => '<span class="leaf">' + esc(x[0]) + '<b>' + fmt(x[1]) + '</b></span>').join("")
-    + '</div>';
+    + '</div>'
+    + ((r.class_metrics || []).length
+      ? '<p class="hint" style="margin-top:var(--s3)">类级 P/R/F1（真盲测严格口径，样本小仅供参考）：</p><table><thead><tr><th>分类</th><th>支持数</th><th>精确率</th><th>召回</th><th>F1</th></tr></thead><tbody>'
+        + r.class_metrics.filter(c => c.support > 0).slice(0, 20).map(c => '<tr><td>' + esc(c.cls) + '</td><td class="num">' + c.support
+          + '</td><td class="num">' + (c.precision == null ? "–" : Math.round(c.precision * 100) + "%")
+          + '</td><td class="num">' + (c.recall == null ? "–" : Math.round(c.recall * 100) + "%")
+          + '</td><td class="num">' + (c.f1 == null ? "–" : Math.round(c.f1 * 100) + "%") + '</td></tr>').join("")
+        + '</tbody></table>'
+      : "")
+    + ((r.history || []).length
+      ? '<p class="hint" style="margin-top:var(--s3)">评估历史（协议 v2 起累积，验收以同口径对比为准）：</p><table><thead><tr><th>时间</th><th>细分（真盲测）</th><th>兼容口径</th><th>组级</th><th>覆盖</th><th>样本</th></tr></thead><tbody>'
+        + r.history.slice().reverse().map(h => '<tr><td class="num mut">' + esc(h.at) + '</td><td class="num">'
+          + Math.round((h.accuracy || 0) * 100) + '%</td><td class="num">'
+          + (h.accuracy_compat == null ? "–" : Math.round(h.accuracy_compat * 100) + "%") + '</td><td class="num">'
+          + Math.round((h.group_accuracy || 0) * 100) + '%</td><td class="num">' + Math.round((h.coverage || 0) * 100)
+          + '%</td><td class="num">' + fmt(h.n_out) + '</td></tr>').join("")
+        + '</tbody></table>'
+      : "");
 }
 async function loadEvalReport() {
   renderEval(await api("/api/eval/report"));
@@ -773,10 +790,13 @@ function openLeafEditor(leafName) {
     + '<button class="btn ghost" data-act="eclose">收起</button></div>';
 }
 
+let RULE_STATS = {};
 async function loadRulesData() {
   await ensureCats();
   $("#r-cat").innerHTML = (CATS || []).map(c => '<option value="' + esc(c) + '">' + esc(c) + '</option>').join("");
-  RULES = await api("/api/rules");
+  const [rules, stats] = await Promise.all([api("/api/rules"), api("/api/rules/stats").catch(() => ({rules: {}}))]);
+  RULES = rules;
+  RULE_STATS = stats.rules || {};
   renderRules();
 }
 function renderRules() {
@@ -790,7 +810,7 @@ function renderRules() {
     (list || []).forEach(r => rows.push([block, r]));
   });
   $("#rulesbody").innerHTML = rows.length ? rows.map(ruleRow).join("")
-    : '<tr><td colspan="7" class="faint">该块暂无规则。</td></tr>';
+    : '<tr><td colspan="8" class="faint">该块暂无规则。</td></tr>';
 }
 function ruleRow(pair) {
   const block = pair[0], r = pair[1];
@@ -798,6 +818,10 @@ function ruleRow(pair) {
   const pn = (r.p !== undefined && r.p !== null)
     ? ' <span class="faint">P=' + Math.round((r.p || 0) * 100) + '% · n=' + fmt(r.n) + '</span>' : "";
   const mid = (r.mid !== undefined && r.mid !== null) ? " (mid=" + esc(r.mid) + ")" : "";
+  const st = RULE_STATS[r.id] || {};
+  const precCell = st.fired
+    ? '<span class="num">' + Math.round((st.precision || 0) * 100) + '%</span><span class="faint"> · ' + fmt(st.fired) + '次</span>'
+    : '<span class="faint">未命中</span>';
   return '<tr>'
     + '<td>' + (BLOCK_CN[block] || esc(block)) + '</td>'
     + '<td>' + esc(r.field) + mid + '</td>'
@@ -807,6 +831,7 @@ function ruleRow(pair) {
     + '<td class="num">' + esc(r.weight) + '</td>'
     + '<td><span class="badge ' + (r.enabled ? "st-auto" : "st-low") + '">' + (r.enabled ? "启用" : "停用") + '</span>'
     + (r.strong ? ' <span class="badge st-review">强</span>' : "") + '</td>'
+    + '<td>' + precCell + '</td>'
     + '<td><button class="btn ghost" data-act="toggle" data-id="' + esc(r.id) + '" data-en="' + (r.enabled ? 0 : 1) + '">' + (r.enabled ? "停用" : "启用") + '</button> '
     + '<button class="btn ghost" data-act="del" data-id="' + esc(r.id) + '">删除</button></td></tr>';
 }

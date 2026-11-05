@@ -900,6 +900,24 @@ class Engine:
             "per_folder": per_list,
             "top_confusions": sorted(confusions.items(), key=lambda kv: -kv[1])[:30],
         }
+        # 类级 P/R/F1（真盲测严格口径；样本小，数字仅作方向参考）
+        classes = {r["truth"] for r in out_corpus} | {r["pred"] for r in out_corpus if r["source"] != "none"}
+        class_metrics = []
+        for c in sorted(classes):
+            tp = sum(1 for r in out_corpus if r["pred"] == c and r["truth"] == c)
+            fp = sum(1 for r in out_corpus if r["pred"] == c and r["truth"] != c)
+            fn = sum(1 for r in out_corpus if r["pred"] != c and r["truth"] == c)
+            prec = tp / (tp + fp) if tp + fp else None
+            rec = tp / (tp + fn) if tp + fn else None
+            f1 = (2 * prec * rec / (prec + rec)) if (prec is not None and rec is not None and prec + rec) else None
+            class_metrics.append({
+                "cls": c, "support": tp + fn, "tp": tp, "fp": fp, "fn": fn,
+                "precision": round(prec, 3) if prec is not None else None,
+                "recall": round(rec, 3) if rec is not None else None,
+                "f1": round(f1, 3) if f1 is not None else None,
+            })
+        class_metrics.sort(key=lambda x: -x["support"])
+        report["class_metrics"] = class_metrics[:40]
         hist = self.state.setdefault("eval_history", [])
         hist.append({
             "at": report["at"],
@@ -913,6 +931,51 @@ class Engine:
         self.state["eval_report"] = report
         self.save()
         return report
+
+    def rule_stats(self) -> dict:
+        """D5 规则精度榜：每条规则在评估集上的命中数与贡献统计。
+        口径优先取真盲测子集（语料外）；为空退化到全量客观。
+        precision = 规则命中条目中，最终预测与其目标分类一致的比例（粗精度）。"""
+        pool1 = set(self.state.get("corpus_folders") or [])
+        pool2 = set(self.state.get("corpus2_folders") or [])
+        items = [
+            it for it in (self.state.get("eval_items") or [])
+            if not it.get("dead") and (it.get("truth") or "") not in pool2
+        ]
+        out = [it for it in items if (it.get("truth") or "") not in pool1]
+        use = out or items
+        scope = "真盲测子集" if out else ("全量客观" if items else "空")
+        if not use:
+            return {"scope": scope, "n_items": 0, "rules": {}}
+        self.prep_items(use)
+        stats: dict = {}
+        for it in use:
+            res = self.score_item(it)
+            pred = res.get("category") or ""
+            truth = it.get("truth") or ""
+            for m in res.get("matched") or []:
+                rid = m.get("rule_id")
+                if not rid:
+                    continue
+                st = stats.setdefault(rid, {"fired": 0, "won": 0, "truth_ok": 0})
+                st["fired"] += 1
+                if pred and pred == m.get("category"):
+                    st["won"] += 1
+                if truth and pred == truth:
+                    st["truth_ok"] += 1
+        self.cleanup_items(use)
+        rules_out: dict = {}
+        for block, rules in (self.state.get("rules") or {}).items():
+            for r in rules:
+                rid = r.get("id")
+                st = stats.get(rid) or {"fired": 0, "won": 0, "truth_ok": 0}
+                rules_out[rid] = {
+                    "block": block, "field": r.get("field"), "category": r.get("category"),
+                    "enabled": r.get("enabled", True),
+                    "fired": st["fired"], "won": st["won"], "truth_ok": st["truth_ok"],
+                    "precision": round(st["won"] / st["fired"], 3) if st["fired"] else None,
+                }
+        return {"scope": scope, "n_items": len(use), "rules": rules_out}
 
     # ---------- 趣味数据 ----------
 
